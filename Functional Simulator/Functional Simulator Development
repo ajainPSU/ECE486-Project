@@ -1,0 +1,73 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+
+#define MAX_MEMORY 1024               // Maximum number of memory words
+#define NUM_REGISTERS 32              // Number of registers
+
+uint32_t PC = 0;                      // (i) Program Counter initialized to 0
+int32_t registers[NUM_REGISTERS] = {0}; // (ii) registers R0–R31 initialized to 0
+uint32_t memory[MAX_MEMORY];         // (iii) Instruction memory ( from steps 1 & 2)
+
+// All counters start at 0 to track how many of each instruction type are executed 
+int total_instructions = 0;
+int arithmetic_count = 0;
+int logical_count = 0;
+int memory_count = 0;
+int control_count = 0;
+
+
+
+// simulate the instructions 
+void simulate() {
+    int halt = 0;
+
+	// Keep running instructions until we see HALT
+	while (!halt) {
+        int index = PC / 4; // Convert PC in bytes to memory index
+        if (index >= MAX_MEMORY) {
+			printf(" PC exceeds memory size, now stopping \n"); // for safety overflow
+			break;
+		}
+
+		 uint32_t raw_instr = memory[index]; // Fetch the instruction from memory
+
+        total_instructions++; // Track total  instructions ran
+
+        // Place holder for now, move to next instruction
+        PC += 4;
+
+    }
+}
+
+
+// Print summary of results
+void print_summary() {
+    printf("Instruction counts:\\n");
+    printf("Total: %d\\n", total_instructions);
+    printf("Arithmetic: %d\\n", arithmetic_count);
+    printf("Logical: %d\\n", logical_count);
+    printf("Memory: %d\\n", memory_count);
+    printf("Control: %d\\n", control_count);
+
+    printf("\n Final Register State (only changed): \n");
+    for (int i = 0; i < NUM_REGISTERS; i++) {
+        if (registers[i] != 0) {
+            printf("R%d: %d\\n", i, registers[i]);
+        }
+    }
+}
+
+
+
+
+int main() {
+//
+    memory[0] = 0x00000000; // replace with actual encoded instruction
+    memory[1] = 0x44000000; // example HALT instruction encoding
+
+	simulate();        // run simulator 
+	print_summary(); //  show final results
+
+	return 0;
+}
