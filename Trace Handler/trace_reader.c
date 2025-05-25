@@ -1,12 +1,11 @@
 /*
-* Alex Jain - 05/11/2025
+* Alex Jain - 05/24/2025
 * ECE 486 / Memory Trace Reader
-* This program reads a memory image file and prints the address and data in a formatted manner.
+* This program reads a memory image file and prints the address, data, and binary representation.
 * The memory image file contains lines of hexadecimal data, each representing a word in memory.
 * The program assumes a word size of 4 bytes and a maximum memory size of 4KB (1024 lines).
 *
-* Version 1.0 - Initial Version
-* To do: Add additional error handling, and convert each line to binary to pass to instruction decoder.
+* Version 1.1 - Added binary output for each memory word.
 */
 
 #include <stdio.h>
@@ -16,6 +15,13 @@
 #define WORD_SIZE 4 // Each word is 4 bytes
 #define MAX_LINE_LENGTH 16 // Maximum length of a line in the file
 #define MAX_MEMORY_LINES 1024 // 4KB memory limit (1024 lines)
+
+// Function to print hexadecimal value in binary format.
+void print_binary(unsigned int value) {
+    for (int i = 31; i >= 0; i--) {
+        printf("%c", (value & (1U << i)) ? '1' : '0');
+    }
+}
 
 void read_memory_image(const char *filename) {
     FILE *file = fopen(filename, "r");
@@ -28,8 +34,8 @@ void read_memory_image(const char *filename) {
     unsigned int address = 0; // Start address at 0
     unsigned int line_count = 0;
 
-    printf("Address\t\tData\n");
-    printf("-------------------------\n");
+    printf("Address\t\tData\t\tBinary\n");
+    printf("---------------------------------------------------------------\n");
 
     while (fgets(line, sizeof(line), file)) {
         if (line_count >= MAX_MEMORY_LINES) {
@@ -40,8 +46,19 @@ void read_memory_image(const char *filename) {
         // Remove newline character if present
         line[strcspn(line, "\n")] = '\0';
 
-        // Print the address and the data
-        printf("0x%08X\t%s\n", address, line);
+        // Convert hex string to unsigned int
+        unsigned int value = (unsigned int)strtoul(line, NULL, 16);
+
+        // Print the address, hex data, and binary representation
+        printf("0x%08X\t%s\t", address, line);
+        print_binary(value);
+        printf("\n");
+
+        // Pass the binary value to the Instruction Decoder (not implemented here)
+        // Note: Process_binary is a placeholder for the function that actually takes it.
+        if (process_binary != NULL) {
+            process_binary(value);
+        } 
 
         // Increment the address by 4 (word size)
         address += WORD_SIZE;
