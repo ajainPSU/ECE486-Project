@@ -1,73 +1,212 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
+#include <stdio.h>     
+#include <stdlib.h>    
+#include <stdint.h>     
 
-#define MAX_MEMORY 1024               // Maximum number of memory words
-#define NUM_REGISTERS 32              // Number of registers
+// Total number of memory words (each word = 4 bytes, so 4KB total)
+#define MAX_MEMORY 1024    
 
-uint32_t PC = 0;                      // (i) Program Counter initialized to 0
-int32_t registers[NUM_REGISTERS] = {0}; // (ii) registers R0–R31 initialized to 0
-uint32_t memory[MAX_MEMORY];         // (iii) Instruction memory ( from steps 1 & 2)
+// 32 general purpose registers (R0 to R31)
+#define NUM_REGISTERS 32   
 
-// All counters start at 0 to track how many of each instruction type are executed 
-int total_instructions = 0;
-int arithmetic_count = 0;
-int logical_count = 0;
-int memory_count = 0;
-int control_count = 0;
+// initialize Program Counter to 0, keeps track of where we are in the program 
+uint32_t PC = 0;     
 
+// initalize the 32 registers to 0 
+int32_t registers[NUM_REGISTERS] = {0};
 
+// simulated memory, holds instructions and data 
+uint32_t memory[MAX_MEMORY];    
 
-// simulate the instructions 
-void simulate() {
-    int halt = 0;
-
-	// Keep running instructions until we see HALT
-	while (!halt) {
-        int index = PC / 4; // Convert PC in bytes to memory index
-        if (index >= MAX_MEMORY) {
-			printf(" PC exceeds memory size, now stopping \n"); // for safety overflow
-			break;
-		}
-
-		 uint32_t raw_instr = memory[index]; // Fetch the instruction from memory
-
-        total_instructions++; // Track total  instructions ran
-
-        // Place holder for now, move to next instruction
-        PC += 4;
-
-    }
-}
-
-
-// Print summary of results
-void print_summary() {
-    printf("Instruction counts:\\n");
-    printf("Total: %d\\n", total_instructions);
-    printf("Arithmetic: %d\\n", arithmetic_count);
-    printf("Logical: %d\\n", logical_count);
-    printf("Memory: %d\\n", memory_count);
-    printf("Control: %d\\n", control_count);
-
-    printf("\n Final Register State (only changed): \n");
-    for (int i = 0; i < NUM_REGISTERS; i++) {
-        if (registers[i] != 0) {
-            printf("R%d: %d\\n", i, registers[i]);
-        }
-    }
-}
-
-
-
+// To track which memory locations were changed 
+uint8_t memory_written[MAX_MEMORY] = {0}; 
 
 int main() {
-//
-    memory[0] = 0x00000000; // replace with actual encoded instruction
-    memory[1] = 0x44000000; // example HALT instruction encoding
+    //  For loading the memory image  
+    FILE *file = fopen("sample_memory_image.txt", "r"); // open memory image
+    if (file == NULL) {
+        printf("Error: Unable open memory image file\n"); 
+        return 1; 
+    }
 
-	simulate();        // run simulator 
-	print_summary(); //  show final results
+	// For reading the current line from the file
+    char line[20];     
+	
+	// Index value for memory[] , to keep track of where in the memory array we are at
+    int memIndex = 0;  
 
-	return 0;
+    // For reading each line of the memory image and store it in memory[]
+    while (fgets(line, sizeof(line), file) != NULL && memIndex < MAX_MEMORY) {
+        memory[memIndex] = (uint32_t)strtoul(line, NULL, 16); // Convert the line from hex to a 32 bit number
+        memIndex++; // Move to the next memory word
+    }
+
+    fclose(file); 
+
+    while (1) {
+        // Fetch instruction from memory using PC 
+        uint32_t instr = memory[PC / 4]; // Get the instruction from memory ,  each memory slot holds 4 bytes
+
+        //Decode instruction fields 
+        uint8_t opcode = (instr >> 26) & 0x3F;   // Bits 31–26 = opcode 
+        uint8_t rs = (instr >> 21) & 0x1F;       // Bits 25–21 = source register 1
+        uint8_t rt = (instr >> 16) & 0x1F;       // Bits 20–16 = either source register 2 or destination for I-type
+        uint8_t rd = (instr >> 11) & 0x1F;       // Bits 15–11 = destination register for R type
+        int16_t imm = instr & 0xFFFF;            // Bits 15–0 = immediate value used in I type
+
+        // Convert the 16 bit value to a 32 bit number to check if the top number is negative
+		// if yes, fill the top 16 bits with 1s
+        int32_t imm_extended = (imm & 0x8000) ? (imm | 0xFFFF0000) : imm;
+
+
+        // Executing instruction based on the opcode
+        switch (opcode) {
+		    // ADD Rd = Rs + Rt (R type)
+            case 0x00: 
+                registers[rd] = registers[rs] + registers[rt];
+                PC += 4; // Move to next instruction
+                break;
+				
+			// ADDI Rt = Rs + Imm (I type)
+            case 0x01: 
+                registers[rt] = registers[rs] + imm_extended;
+                PC += 4;
+                break;
+
+			// SUB Rd = Rs - Rt
+            case 0x02: 
+                registers[rd] = registers[rs] - registers[rt];
+                PC += 4;
+                break;
+			
+			// SUBI Rt = Rs - Imm
+            case 0x03: 
+                registers[rt] = registers[rs] - imm_extended;
+                PC += 4;
+                break;
+
+			// MUL Rd = Rs * Rt
+            case 0x04: 
+                registers[rd] = registers[rs] * registers[rt];
+                PC += 4;
+                break;
+			
+			// MULI Rt = Rs * Imm
+            case 0x05: 
+                registers[rt] = registers[rs] * imm_extended;
+                PC += 4;
+                break;
+			
+			// OR Rd = Rs | Rt (bitwise OR)
+            case 0x06: 
+                registers[rd] = registers[rs] | registers[rt];
+                PC += 4;
+                break;
+
+			// ORI Rt = Rs | Imm
+            case 0x07: 
+                registers[rt] = registers[rs] | imm_extended;
+                PC += 4;
+                break;
+			
+			// AND Rd = Rs & Rt
+            case 0x08: 
+                registers[rd] = registers[rs] & registers[rt];
+                PC += 4;
+                break;
+
+			// ANDI Rt = Rs & Imm
+            case 0x09: 
+                registers[rt] = registers[rs] & imm_extended;
+                PC += 4;
+                break;
+			
+			// XOR Rd = Rs ^ Rt (bitwise XOR)
+            case 0x0A: 
+                registers[rd] = registers[rs] ^ registers[rt];
+                PC += 4;
+                break;
+			
+			// XORI Rt = Rs ^ Imm
+            case 0x0B:
+                registers[rt] = registers[rs] ^ imm_extended;
+                PC += 4;
+                break;
+
+
+			// LDW Rt = MEM[Rs + Imm]
+            case 0x0C: { 
+				// Calculate address
+                int addr = registers[rs] + imm_extended; 
+				// Make sure address is aligned and in bounds
+                if (addr % 4 == 0 && addr / 4 < MAX_MEMORY) 
+                    registers[rt] = memory[addr / 4]; // Load from memory
+                PC += 4;
+                break;
+            }
+			
+			// STW MEM[Rs + Imm] = Rt
+            case 0x0D: { 
+                int addr = registers[rs] + imm_extended;
+                if (addr % 4 == 0 && addr / 4 < MAX_MEMORY) {
+                    memory[addr / 4] = registers[rt]; // Store value to memory
+                    memory_written[addr / 4] = 1;     // Mark that this slot was changed
+                }
+                PC += 4;
+                break;
+            }
+			
+			// BZ: Branch if Rs == 0
+            case 0x0E: 
+                if (registers[rs] == 0)
+                    PC = PC + 4 + (imm_extended << 2); // Jump to offset from PC
+                else
+                    PC += 4; // Continue normally
+                break;
+			
+			// BEQ: Branch if Rs == Rt
+            case 0x0F: 
+                if (registers[rs] == registers[rt])
+                    PC = PC + 4 + (imm_extended << 2); // Branch taken
+                else
+                    PC += 4;
+                break;
+			
+			// JR: Jump to address in Rs
+            case 0x10: 
+                PC = registers[rs];
+                break;
+			
+			// HALT: Stop execution
+            case 0x11: 
+                printf("HALT instruction encountered, stopping simulation!\n");
+                goto END_SIMULATION; // End the loop immediately
+                break;
+
+			// For unknown instruction
+            default: 
+                printf("Unknown instruction at PC = %u. Stopping.\n", PC);
+                goto END_SIMULATION;
+        }
+    }
+
+END_SIMULATION:
+
+    // Print the final machine state
+
+    // Show where the program ended
+    printf("Final PC = %u\n", PC); 
+
+    // Print all non-zero registers (R0 to R31)
+    for (int i = 0; i < NUM_REGISTERS; i++) {
+        if (registers[i] != 0)
+            printf("R%d = %d\n", i, registers[i]);
+    }
+
+    // Print memory locations that were written to (show changes only)
+    for (int i = 0; i < MAX_MEMORY; i++) {
+        if (memory_written[i])
+            printf("MEM[%d] = %u\n", i * 4, memory[i]); // Multiply by 4 to show actual byte address
+    }
+
+    return 0;
 }
