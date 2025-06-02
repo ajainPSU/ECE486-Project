@@ -1,0 +1,209 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "instruction_decoder.h"
+#include "functional_sim.h"
+#include "trace_reader.h"
+
+// opcode value for NOP instructions, for flushing or stalling
+// use value outside of the opcode, only 0x00–0x11 are used
+#define NOP_OPCODE 0x3F
+
+// struct to determine if an instruction is valid or not
+typedef struct {
+    DecodedInstruction pipe_stage_instruction; // holds the instruction currently in the pipeline
+    int valid;    // real instruction (1) or empty/NOP (0)
+} PipelineStage;
+
+// 5 stage pipeline: IF, ID, EX, MEM, WB
+PipelineStage pipeline[5];
+
+// For tracking cycles, stalls, and hazards
+int clock_cycles = 0;
+int total_stalls = 0;
+int raw_hazards = 0;
+
+// To create a NOP instruction in the simulator
+DecodedInstruction create_nop() {
+    // variable nop to hold the NOP instruction
+    DecodedInstruction nop; 
+    // set the opcode to 0x3F, so the simulator knows this is a NOP
+    nop.opcode = NOP_OPCODE; 
+    // set the type as invalid since NOP is not a real instruction type
+    nop.type = INVALID_TYPE; 
+    // all register fields to -1 so the simulator can skip, NOP uses no registers
+    nop.rs = nop.rt = nop.rd = -1;  
+    nop.immediate = 0;
+    return nop;
+}
+
+// Check if the instruction writes to a register
+// return 1 if it does, 0 if it doesn't
+int writes_to_register(DecodedInstruction pipe_stage_instruction) {
+    if (pipe_stage_instruction.opcode == STW || pipe_stage_instruction.opcode == BZ || 
+        pipe_stage_instruction.opcode == BEQ || pipe_stage_instruction.opcode == JR || 
+        pipe_stage_instruction.opcode == HALT || pipe_stage_instruction.opcode == NOP_OPCODE)
+        return 0;
+    return 1;
+}
+
+// Figure out which register this instruction will write its result to
+int get_destination_register(DecodedInstruction pipe_stage_instruction) {
+    // for instructions that dont write to a register, 
+    // so simulator knows there’s no destination and can skip hazard checks for it
+    if (!writes_to_register(pipe_stage_instruction)) 
+        return -1;
+    // for R type instructions, result goes rd
+    if (pipe_stage_instruction.type == R_TYPE) 
+        return pipe_stage_instruction.rd;
+    // for I type instruction  , restult goes to rt
+    if (pipe_stage_instruction.type == I_TYPE) 
+        return pipe_stage_instruction.rt;
+
+    // for BEQ, STW, NOP, etc. return -1
+    return -1;
+}
+
+// Detect RAW hazard between a writing_instr and reading_instr instruction
+int has_raw_hazard(DecodedInstruction writing_instr, DecodedInstruction reading_instr) {
+    if (!writes_to_register(writing_instr)) return 0;
+    int dest = get_destination_register(writing_instr);
+    return (reading_instr.rs == dest || (reading_instr.rt == dest && reading_instr.type == R_TYPE));
+}
+
+// Check if the current instruction is a branch
+int is_branch(DecodedInstruction pipe_stage_instruction) {
+    return (pipe_stage_instruction.opcode == BZ || 
+            pipe_stage_instruction.opcode == BEQ || 
+            pipe_stage_instruction.opcode == JR);
+}
+
+// Check if the branch should be taken based on the instruction type 
+int is_branch_taken(DecodedInstruction pipe_stage_instruction) {
+    // BZ: Take the branch if the value in rs is 0
+    if (pipe_stage_instruction.opcode == BZ)
+        return state.registers[pipe_stage_instruction.rs] == 0;
+
+    // BEQ: Take the branch if rs and rt registers have the same value
+    if (pipe_stage_instruction.opcode == BEQ)
+        return state.registers[pipe_stage_instruction.rs] == state.registers[pipe_stage_instruction.rt];
+
+    // JR: Always take the branch, unconditional jump to register address
+    if (pipe_stage_instruction.opcode == JR)
+        return 1;
+
+    // If it's not a branch instruction, do not take the branch
+    return 0;
+}
+
+// Simulate 1 clock cycle
+void step_pipeline() {
+    // Check if EX stage has a taken branch
+    if (is_branch(pipeline[2].pipe_stage_instruction) && is_branch_taken(pipeline[2].pipe_stage_instruction)) {
+        // Flush IF and ID stages
+        pipeline[0].pipe_stage_instruction = create_nop(); pipeline[0].valid = 0;
+        pipeline[1].pipe_stage_instruction = create_nop(); pipeline[1].valid = 0;
+
+        // Update the program counter to the correct branch target
+        if (pipeline[2].pipe_stage_instruction.opcode == JR)
+            state.pc = state.registers[pipeline[2].pipe_stage_instruction.rs];
+        else
+            state.pc += pipeline[2].pipe_stage_instruction.immediate * 4;
+    }
+
+    // Check for RAW hazard in ID stage
+    int stall_needed = 0;
+
+    if (pipeline[1].valid && pipeline[1].pipe_stage_instruction.opcode != NOP_OPCODE) {
+        DecodedInstruction current = pipeline[1].pipe_stage_instruction;
+
+        for (int i = 2; i <= 4; i++) {
+            if (pipeline[i].valid && pipeline[i].pipe_stage_instruction.opcode != NOP_OPCODE) {
+                DecodedInstruction prev = pipeline[i].pipe_stage_instruction;
+
+                if (has_raw_hazard(prev, current)) {
+                    raw_hazards++;
+
+                    if (prev.opcode == LDW && i == 2) {
+                        stall_needed = 1;
+                        total_stalls++;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Write Back stage: complete instruction if valid
+    if (pipeline[4].valid && pipeline[4].pipe_stage_instruction.opcode != NOP_OPCODE)
+        simulate_instruction(pipeline[4].pipe_stage_instruction);
+
+    // Shift instructions forward (or insert stall)
+    if (stall_needed) {
+        pipeline[4] = pipeline[3];
+        pipeline[3] = pipeline[2];
+        pipeline[2].pipe_stage_instruction = create_nop();
+        pipeline[2].valid = 0;
+    } else {
+        for (int i = 4; i > 0; i--) {
+            pipeline[i] = pipeline[i - 1];
+        }
+
+        // Fetch new instruction
+        if (state.pc < 4096) {
+            uint32_t binary = state.memory[state.pc / 4];
+            pipeline[0].pipe_stage_instruction = decode_instruction(binary);
+            pipeline[0].valid = 1;
+            state.pc += 4;
+        } else {
+            pipeline[0].pipe_stage_instruction = create_nop();
+            pipeline[0].valid = 0;
+        }
+    }
+
+    clock_cycles++;
+}
+
+// loop
+void run_pipeline_sim() {
+    int halted = 0;
+
+    // Initialize pipeline with NOPs
+    for (int i = 0; i < 5; i++) {
+        pipeline[i].pipe_stage_instruction = create_nop();
+        pipeline[i].valid = 0;
+    }
+
+    while (!halted) {
+        if (pipeline[4].valid && pipeline[4].pipe_stage_instruction.opcode == HALT) {
+            halted = 1;
+        }
+        step_pipeline();
+    }
+
+    // Print simulation result
+    printf("Pipeline With Forwarding Simulator:\n");
+    printf("Clock Cycles: %d\n", clock_cycles);
+    printf("Total RAW Hazards: %d\n", raw_hazards);
+    printf("Total Stalls: %d\n\n", total_stalls);
+
+    // Final register/memory state
+    print_final_state(); 
+}
+
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <memory_image_file>\n", argv[0]);
+        return 1;
+    }
+
+    initialize_machine_state();  // Reset everything
+
+    // Load program
+    read_memory_image(argv[1], NULL);  
+
+    // Begin simulation
+    run_pipeline_sim();   
+
+    return 0;
+}
