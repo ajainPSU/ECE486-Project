@@ -29,8 +29,6 @@ typedef struct {
     int rt;
     int rd;         // Only used for R-type instructions
     int immediate;  // Only used for I-type instructions
-    int branch_taken; // 1 if branch taken, 0 otherwise (edit)
-    int branch_target; // Target address for branch instructions (edit)
 } DecodedInstruction;
 
 // Function prototypes
