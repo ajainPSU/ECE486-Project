@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include "trace_reader.h"
 #include "functional_sim.h"
+#include "instruction_decoder.h"
 
 // Function to get instruction type based on opcode.
 InstrType get_instruction_type(uint8_t opcode) {
@@ -22,6 +23,7 @@ InstrType get_instruction_type(uint8_t opcode) {
         case ORI: case ANDI: case XORI:
         case LDW: case STW:
         case BZ: case BEQ: case JR: case HALT:
+        case NOP: // NOP is typically an I-type or special type, but for simplicity, can be I_TYPE with immediate 0
             return I_TYPE;
         default:
             return INVALID_TYPE;
@@ -32,28 +34,29 @@ DecodedInstruction decode_instruction(uint32_t instr) {
     DecodedInstruction decoded;
     decoded.opcode = (Opcode)((instr >> 26) & 0x3F); // Extract opcode
     decoded.type = get_instruction_type(decoded.opcode);
-    decoded.rs = (instr >> 21) & 0x1F; // Extract rs
-    decoded.rt = (instr >> 16) & 0x1F; // Extract rt
-    decoded.rd = (instr >> 11) & 0x1F; // Extract rd
-    decoded.immediate = (int16_t)(instr & 0xFFFF); // Sign-extend immediate
-    decoded.branch_taken = 0; // Default: branch not taken
-    decoded.branch_target = 0; // Default: no branch target
 
-    // Handle branch instructions
-    if (decoded.opcode == BEQ || decoded.opcode == BZ) {
-        // Calculate branch target
-        decoded.branch_target = state.pc + (decoded.immediate << 2);
+    // Initialize all fields to 0 to avoid garbage values for unused fields
+    decoded.rs = 0;
+    decoded.rt = 0;
+    decoded.rd = 0;
+    decoded.immediate = 0;
 
-        // Determine if branch is taken
-        if (decoded.opcode == BEQ && state.registers[decoded.rs] == state.registers[decoded.rt]) {
-            decoded.branch_taken = 1;
-        } else if (decoded.opcode == BZ && state.registers[decoded.rs] == 0) {
-            decoded.branch_taken = 1;
-        }
-    } else if (decoded.opcode == JR) {
-        // Jump Register: Target is the value in rs
-        decoded.branch_target = state.registers[decoded.rs];
-        decoded.branch_taken = 1;
+    switch (decoded.type) {
+        case R_TYPE:
+            decoded.rs = (instr >> 21) & 0x1F; // Extract rs
+            decoded.rt = (instr >> 16) & 0x1F; // Extract rt
+            decoded.rd = (instr >> 11) & 0x1F; // Extract rd
+            break;
+        case I_TYPE:
+            decoded.rs = (instr >> 21) & 0x1F; // Extract rs
+            decoded.rt = (instr >> 16) & 0x1F; // Extract rt (destination for ADDI/LDW, source for STW, branch target for BEQ/BZ)
+            decoded.immediate = (int16_t)(instr & 0xFFFF); // Sign-extend immediate
+            break;
+        case INVALID_TYPE:
+            // Handle invalid instruction type, perhaps by setting NOP or error
+            decoded.opcode = NOP;
+            decoded.type = I_TYPE;
+            break;
     }
 
     return decoded;
