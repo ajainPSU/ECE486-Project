@@ -9,7 +9,8 @@ void simulate_pipeline_no_forwarding();
 void insert_nop(int stage);
 void initialize_pipeline();
 void advance_pipeline();
-int detect_raw_hazard(DecodedInstruction curr, DecodedInstruction ex, DecodedInstruction mem, DecodedInstruction wb);
+// Changed signature for detect_raw_hazard
+int detect_raw_hazard(DecodedInstruction curr, DecodedInstruction ex, DecodedInstruction mem);
 
 #endif // NO_FWD_H
 
