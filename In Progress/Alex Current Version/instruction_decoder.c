@@ -27,7 +27,7 @@ InstrType get_instruction_type(uint8_t opcode) {
         default:
             return INVALID_TYPE;
     }
-}
+} 
 
 // Function to decode a binary instruction.
 DecodedInstruction decode_instruction(uint32_t instr) {
@@ -51,10 +51,20 @@ DecodedInstruction decode_instruction(uint32_t instr) {
             decoded.rs = (instr >> 21) & 0x1F; // Extract rs (bits 25-21)
             decoded.rt = (instr >> 16) & 0x1F; // Extract rt (bits 20-16)
             decoded.immediate = (int16_t)(instr & 0xFFFF); // Extract and sign-extend immediate (bits 15-0)
+            decoded.rd = 0; // rd is not used in I_TYPE instructions
             break;
         case INVALID_TYPE:
-            decoded.opcode = NOP; // Fallback to NOP for invalid instructions
-            decoded.type = I_TYPE; // NOP is handled as I_TYPE for simplicity
+            fprintf(stderr, "Warning: Instruction with UNKNOWN/INVALID_TYPE for decoded opcode 0x%02X (raw instr: 0x%08X)\n", (unsigned int)decoded.opcode, instr);
+            break;
+        default: // Also catches if decoded.type wasn't set.
+            fprintf(stderr, "Error: Invalid instruction type for opcode 0x%02X (raw instr: 0x%08X)\n", (unsigned int)decoded.opcode, instr);
+            // Set NOP as fallback.
+            decoded.opcode = NOP;
+            decoded.type = I_TYPE;
+            decoded.rs = 0;
+            decoded.rt = 0;
+            decoded.rd = 0;
+            decoded.immediate = 0;
             break;
     }
     return decoded;
