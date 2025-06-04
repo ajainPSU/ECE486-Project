@@ -41,6 +41,9 @@ void initialize_machine_state() {
 }
 
 void simulate_instruction(DecodedInstruction instr) {
+    // Debug Statement
+    printf("SIMULATE_INSTRUCTION called with PC (arch before this instr)=%u, Opcode=0x%X, rs=%d, rt=%d, rd=%d, imm=%d\n",
+           state.pc, instr.opcode, instr.rs, instr.rt, instr.rd, instr.immediate);
     // R0 (register 0) is always 0 and cannot be written
     if (instr.type == R_TYPE && instr.rd == 0) {
         // Attempting to write to R0. Do nothing, R0 remains 0.
@@ -140,6 +143,8 @@ void simulate_instruction(DecodedInstruction instr) {
             state.memory[address / 4] = state.registers[instr.rt];
             memory_changed[address / 4] = 1; // Mark memory as changed
             memory_access_instructions++;
+            // Debug statement.
+            printf("  EXECUTED STW logic for PC (arch before this instr)=%u. About to break.\n", state.pc); // Use state.pc as it was at entry
             break;
         }
 
@@ -165,8 +170,13 @@ void simulate_instruction(DecodedInstruction instr) {
             control_transfer_instructions++;
             return; // PC has been updated, so return immediately
         case HALT:
+            // Debug statement
+            printf("  ENTERED HALT case for PC (arch before this instr)=%u, Original Opcode was 0x%X.\n", state.pc, instr.opcode);
             control_transfer_instructions++;
             state.pc += 4; // Increment PC for HALT itself for accurate final PC count
+            printf("--- HALT INSTRUCTION PROCESSING ---\n"); // New debug
+            printf("--- Architectural PC before this HALT was: %u ---\n", state.pc - 4); // New debug
+            printf("--- Architectural PC AFTER HALT increment is: %u ---\n", state.pc); // New debug
             printf("Program halted.\n");
             print_final_state(); // Print final state upon halt
             exit(0); // Exit the program
@@ -251,14 +261,44 @@ int main(int argc, char *argv[]) {
 
     if (strcmp(mode, "FS") == 0) {
         // Run functional simulation loop
+        // ADDED FS Trace Start
+        printf("[FS_TRACE_START]\n");
         while (1) {
+            uint32_t pc_before_simulate = state.pc;
+
             if (state.pc >= 4096) { // Check for PC out of bounds
-                fprintf(stderr, "PC out of bounds: %u\n", state.pc);
+                fprintf(stderr, "[FS_TRACE] PC out of bounds: %u\n", state.pc);
                 break;
             }
             uint32_t instr_word = state.memory[state.pc / 4];
             DecodedInstruction decoded = decode_instruction(instr_word);
+
+            // <<< ADDED BLOCK START >>>
+            // Print key architectural state *before* the instruction is simulated (optional, but can be useful)
+            printf("[FS_TRACE] PRE  PC=0x%03X: %s (Op:0x%X Rd:%d Rs:%d Rt:%d Imm:%d) || R1=%d R8=%d R10=%d R11=%d\n",
+                    pc_before_simulate,
+                    opcode_to_string(decoded.opcode), // Ensure opcode_to_string is available
+                    decoded.opcode, decoded.rd, decoded.rs, decoded.rt, decoded.immediate,
+                    state.registers[1], state.registers[8], state.registers[10], state.registers[11]);
+            // <<< ADDED BLOCK END >>>
+
             simulate_instruction(decoded);
+
+            // <<< ADDED BLOCK START >>>
+            // Print key architectural state *after* the instruction has been simulated
+            // Adjust which registers (R1-R12 or others) you print based on what's most relevant
+            printf("[FS_TRACE] PC_Exec=0x%03X; Op=%-4s(0x%02X); Rd=%2d,Rs=%2d,Rt=%2d,Imm=%-6d || R1=%-4d R2=%-4d R3=%-4d R4=%-4d R5=%-4d R6=%-4d R7=%-4d R8=%-4d R9=%-4d R10=%-3d R11=%-3d R12=%-3d || Next_Arch_PC=0x%03X\n",
+                   pc_before_simulate, // The PC of the instruction that JUST ran
+                   opcode_to_string(decoded.opcode), // Make sure opcode_to_string is available and declared
+                   decoded.opcode,
+                   decoded.rd, decoded.rs, decoded.rt, decoded.immediate,
+                   state.registers[1], state.registers[2], state.registers[3], state.registers[4],
+                   state.registers[5], state.registers[6], state.registers[7], state.registers[8],
+                   state.registers[9], state.registers[10], state.registers[11], state.registers[12],
+                   state.pc); // The new architectural PC for the *next* instruction
+            
+            fflush(stdout); // Ensure output is printed immediately
+            // <<< ADDED BLOCK END >>>
 
             if (decoded.opcode == HALT) {
                 break; // simulate_instruction() for HALT will call exit(0) and print_final_state()
@@ -266,6 +306,7 @@ int main(int argc, char *argv[]) {
         }
         // If HALT doesn't exit, ensure print_final_state is called
         // print_final_state(); // Called by HALT instruction in simulate_instruction
+        printf("[FS_TRACE_END]\n");
         return 0;
 
     } else if (strcmp(mode, "NF") == 0) {
