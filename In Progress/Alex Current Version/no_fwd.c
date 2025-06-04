@@ -106,28 +106,32 @@ int detect_raw_hazard(PipelineRegister curr_id_reg, PipelineRegister ex_reg, Pip
 
     if (curr_id_instr.type == R_TYPE || curr_id_instr.opcode == BEQ) {
         src2 = curr_id_instr.rt;
+    } else if (curr_id_instr.opcode == STW) { // <<< ADD THIS ELSE IF BLOCK
+        src2 = curr_id_instr.rt; // STW also uses rt as a source register (value to store)
     }
-    if (src1 == 0) src1 = -1;
+
+    if (src1 == 0) src1 = -1; // R0 is not a hazard source/dest
     if (src2 == 0) src2 = -1;
 
     int ex_dest = -1;
-    if (ex_reg.valid && !is_nop(ex_reg.instr) && ex_reg.instr.opcode != HALT && ex_reg.instr.opcode != BZ && ex_reg.instr.opcode != BEQ && ex_reg.instr.opcode != JR && ex_reg.instr.opcode != STW) {
+    // The filter on producer instructions (ex_reg.instr.opcode != BZ etc.) might still be something to review later
+    // but let's ensure sources are correct first.
+    if (ex_reg.valid && !is_nop(ex_reg.instr) /* && ex_reg.instr.opcode != HALT ... (existing filters) */ ) {
         ex_dest = get_dest_reg(ex_reg.instr);
-        if (ex_dest == 0) ex_dest = -1;
-        if (ex_dest != -1 && (ex_dest == src1 || ex_dest == src2)) {
+        if (ex_dest == 0) ex_dest = -1; // Do not consider R0 as a written destination
+        if (ex_dest != -1 && (ex_dest == src1 || (src2 != -1 && ex_dest == src2))) { // Check src2 only if valid
             return 1;
         }
     }
 
     int mem_dest = -1;
-    if (mem_reg.valid && !is_nop(mem_reg.instr) && mem_reg.instr.opcode != HALT && mem_reg.instr.opcode != BZ && mem_reg.instr.opcode != BEQ && mem_reg.instr.opcode != JR && mem_reg.instr.opcode != STW) {
+    if (mem_reg.valid && !is_nop(mem_reg.instr) /* && mem_reg.instr.opcode != HALT ... (existing filters) */ ) {
         mem_dest = get_dest_reg(mem_reg.instr);
-        if (mem_dest == 0) mem_dest = -1;
-        if (mem_dest != -1 && (mem_dest == src1 || mem_dest == src2)) {
+        if (mem_dest == 0) mem_dest = -1; // Do not consider R0 as a written destination
+        if (mem_dest != -1 && (mem_dest == src1 || (src2 != -1 && mem_dest == src2))) { // Check src2 only if valid
             return 1;
         }
     }
-
     return 0;
 }
 
@@ -135,7 +139,7 @@ int detect_raw_hazard(PipelineRegister curr_id_reg, PipelineRegister ex_reg, Pip
 void simulate_one_cycle_no_forwarding_internal() {
     clock_cycles++;
 
-    /* Debugging Statements
+    // Debugging Statements
     // --- Optional: Print header for the current cycle ---
     printf("Clock cycle: %d\n", clock_cycles);
     printf("  Reg State: R1=%d, R2=%d, R3=%d, R4=%d, R5=%d, R6=%d, R7=%d, R8=%d, R9=%d, R10=%d, R11=%d, R12=%d, R13=%d, R14=%d, R15=%d\n",
@@ -148,14 +152,20 @@ void simulate_one_cycle_no_forwarding_internal() {
            opcode_to_string(pipeline[EX].instr.opcode), opcode_to_string(pipeline[MEM].instr.opcode),
            opcode_to_string(pipeline[WB].instr.opcode));
     printf("Pipeline PC: %u\n", pipeline_pc);
-    */
 
+    // Debugging PC at 88
+    if (pipeline[WB].valid && pipeline[WB].pc == 88) {
+        printf("DEBUG WB (Cycle %d): PC=%u, Opcode in pipeline[WB].instr = 0x%X, Expected STW (0x0D)\n",
+            clock_cycles, pipeline[WB].pc, pipeline[WB].instr.opcode);
+
+    }
 
     // --- Stage Execution (in reverse order for pipeline integrity) ---
     // 1. WB stage execution: Instructions commit and update architectural state
     if (pipeline[WB].valid && !is_nop(pipeline[WB].instr)) {
+        state.pc = pipeline[WB].pc;
         simulate_instruction(pipeline[WB].instr);
-    }
+    } 
 
     int raw_hazard_stall_this_cycle = 0;
     int branch_flush_this_cycle = 0;
@@ -164,26 +174,30 @@ void simulate_one_cycle_no_forwarding_internal() {
     if (pipeline[EX].valid && !is_nop(pipeline[EX].instr) &&
         (pipeline[EX].instr.opcode == BEQ || pipeline[EX].instr.opcode == BZ || pipeline[EX].instr.opcode == JR)) {
 
-        // DEBUG statement printf("  Branch check in EX: PC=%u, Opcode=%d\n", pipeline[EX].pc, pipeline[EX].instr.opcode);
+        // DEBUG Statement
+        printf("  Branch check in EX: PC=%u, Opcode=%d\n", pipeline[EX].pc, pipeline[EX].instr.opcode);
 
         int is_branch_taken = 0;
         uint32_t branch_resolved_target_pc = 0;
 
         if (pipeline[EX].instr.opcode == BZ) {
-            // DEBUG Statement printf("  Branch BZ R_S (R%d): %d\n", pipeline[EX].instr.rs, state.registers[pipeline[EX].instr.rs]);
+            // DEBUG Statement 
+            printf("  Branch BZ R_S (R%d): %d\n", pipeline[EX].instr.rs, state.registers[pipeline[EX].instr.rs]);
             if (state.registers[pipeline[EX].instr.rs] == 0) {
                 is_branch_taken = 1;
                 branch_resolved_target_pc = pipeline[EX].pc + WORD_SIZE + ((int32_t)pipeline[EX].instr.immediate * WORD_SIZE);
             }
         } else if (pipeline[EX].instr.opcode == BEQ) {
-            // DEBUG Statement printf("  Branch BEQ R_S (R%d): %d\n", pipeline[EX].instr.rs, state.registers[pipeline[EX].instr.rs]);
-            // DEBUG Statement printf("  Branch BEQ R_T (R%d): %d\n", pipeline[EX].instr.rt, state.registers[pipeline[EX].instr.rt]);
+            // DEBUG Statement
+            printf("  Branch BEQ R_S (R%d): %d\n", pipeline[EX].instr.rs, state.registers[pipeline[EX].instr.rs]);
+            printf("  Branch BEQ R_T (R%d): %d\n", pipeline[EX].instr.rt, state.registers[pipeline[EX].instr.rt]);
             if (state.registers[pipeline[EX].instr.rs] == state.registers[pipeline[EX].instr.rt]) {
                 is_branch_taken = 1;
                 branch_resolved_target_pc = pipeline[EX].pc + WORD_SIZE + ((int32_t)pipeline[EX].instr.immediate * WORD_SIZE);
             }
         } else if (pipeline[EX].instr.opcode == JR) {
-            // DEBUG Statement printf("  JR R_S (R%d): %d\n", pipeline[EX].instr.rs, state.registers[pipeline[EX].instr.rs]);
+            // DEBUG Statement
+            printf("  JR R_S (R%d): %d\n", pipeline[EX].instr.rs, state.registers[pipeline[EX].instr.rs]);
             is_branch_taken = 1;
             branch_resolved_target_pc = (uint32_t)state.registers[pipeline[EX].instr.rs];
         }
@@ -192,7 +206,8 @@ void simulate_one_cycle_no_forwarding_internal() {
             pipeline_pc = branch_resolved_target_pc;
             branch_flush_this_cycle = 1;
             total_flushes += 2;
-            // DEBUG Statement printf("Branch taken in EX stage. Flushing IF and ID. New PC: %u\n", pipeline_pc);
+            // DEBUG Statement
+            printf("Branch taken in EX stage. Flushing IF and ID. New PC: %u\n", pipeline_pc);
         }
     }
 
@@ -205,7 +220,8 @@ void simulate_one_cycle_no_forwarding_internal() {
         );
 
         if (raw_hazard_stall_this_cycle) {
-            // DEBUG Statement printf("RAW hazard detected. Stalling pipeline.\n");
+            // DEBUG Statement
+            printf("RAW hazard detected. Stalling pipeline.\n");
             total_stalls++;
         }
     }
@@ -216,7 +232,8 @@ void simulate_one_cycle_no_forwarding_internal() {
     if (raw_hazard_stall_this_cycle) {
         pipeline[MEM] = pipeline[EX];
         insert_nop(EX, pipeline);
-        // DEBUG Statement printf("Pipeline stalled. Inserting NOP into EX stage.\n");
+        // DEBUG Statement
+        printf("Pipeline stalled. Inserting NOP into EX stage.\n");
     } else if (branch_flush_this_cycle) {
         pipeline[MEM] = pipeline[EX];
         insert_nop(EX, pipeline);
@@ -240,19 +257,23 @@ void simulate_one_cycle_no_forwarding_internal() {
         pipeline[IF].pc = pipeline_pc;
 
         if (fetched.opcode == HALT) {
-            // DEBUG Statement printf("HALT instruction fetched. Stopping further fetches.\n");
+            // DEBUG Statement
+            printf("HALT instruction fetched. Stopping further fetches.\n");
             pipeline_halt_seen = 1;
         }
 
         pipeline_pc += WORD_SIZE;
 
-        // DEBUG Statement printf("Fetched instruction at PC: %u. Opcode: %d\n", pipeline[IF].pc, fetched.opcode);
+        // DEBUG Statement
+        printf("Fetched instruction at PC: %u. Opcode: %d\n", pipeline[IF].pc, fetched.opcode);
     } else if (!raw_hazard_stall_this_cycle && pipeline_halt_seen) {
         insert_nop(IF, pipeline);
-        // DEBUG Statement printf("Inserting NOP into IF stage because HALT was previously fetched and no stall/flush.\n");
+        // DEBUG Statement
+        printf("Inserting NOP into IF stage because HALT was previously fetched and no stall/flush.\n");
     } else if (!raw_hazard_stall_this_cycle && !pipeline_halt_seen && pipeline_pc >= (MAX_MEMORY_LINES * WORD_SIZE)) {
         insert_nop(IF, pipeline);
-        // DEBUG Statement printf("Inserting NOP into IF stage because PC (%u) is out of memory bounds, effectively halting.\n", pipeline_pc);
+        // DEBUG Statement
+        printf("Inserting NOP into IF stage because PC (%u) is out of memory bounds, effectively halting.\n", pipeline_pc);
         pipeline_halt_seen = 1;
     }
 }
@@ -278,7 +299,8 @@ void simulate_pipeline_no_forwarding() {
         }
 
         if (!active_instructions_remaining && (pipeline_halt_seen || pipeline_pc >= (MAX_MEMORY_LINES * WORD_SIZE))) {
-             // DEBUG Statement printf("Program finished (pipeline drained).\n");
+            // DEBUG Statement
+             printf("Program finished (pipeline drained).\n");
              break;
         }
 
@@ -288,8 +310,4 @@ void simulate_pipeline_no_forwarding() {
         }
     }
     print_final_state(); // Print final state of registers and memory
-    // Handled by print_final_state() in functional_sim.c
-    // printf("\nTotal stalls: %d\n", total_stalls);
-    // printf("\nTiming Simulator:\n");
-    // printf("Total number of clock cycles: %d\n", clock_cycles);
 }
