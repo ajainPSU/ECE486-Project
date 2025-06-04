@@ -1,4 +1,3 @@
-// with_fwd.h (Modified)
 #ifndef WITH_FWD_H
 #define WITH_FWD_H
 
