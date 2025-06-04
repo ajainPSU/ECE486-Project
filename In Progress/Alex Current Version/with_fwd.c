@@ -1,4 +1,3 @@
-// with_fwd.c (Modified)
 /*
 * Alex Jain - 06/03/2025
 * ECE 486 / Pipeline Simulator (With Forwarding)
