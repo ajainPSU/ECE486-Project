@@ -30,5 +30,4 @@ void initialize_pipeline(PipelineRegister pipeline_arr[]);
 // Function declarations for no_fwd.c specific functions
 void simulate_pipeline_no_forwarding();
 
-
 #endif // NO_FWD_H
