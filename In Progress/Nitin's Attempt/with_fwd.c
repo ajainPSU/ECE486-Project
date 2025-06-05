@@ -410,9 +410,11 @@ void simulate_pipeline_with_forwarding() {
         }
 
         if (pipeline[WB].valid && pipeline[WB].instr.opcode == HALT) {
-            // 1) Retire HALT (this will bump all counters and advance PC by 4 inside simulate_instruction)
+            // 1) Retire HALT (updates registers & counters, but does NOT bump PC itself)
             simulate_instruction(pipeline[WB].instr);
-            // 2) Now stop the pipeline loop
+            // 2) Manually bump PC by 4 just once so we end at HALT_address + 4
+            state.pc = pipeline[WB].pc + 4;
+            // 3) Now stop the pipeline loop
             break;
         }
 

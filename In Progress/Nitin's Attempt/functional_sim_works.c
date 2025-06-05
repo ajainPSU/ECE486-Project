@@ -171,7 +171,7 @@ void simulate_instruction(DecodedInstruction instr) {
             // 1) Count this instruction
             control_transfer_instructions++;
             // 2) Advance PC by 4 _here_, so that final PC prints past HALT
-            state.pc += 4;  // Increment PC for HALT itself for accurate final PC count
+            //state.pc += 4;  // Increment PC for HALT itself for accurate final PC count
             // Above line removed since it messed up FS's PC counter.
             printf("--- HALT INSTRUCTION PROCESSING ---\n");                              // New debug
             printf("--- Architectural PC before this HALT was: %u ---\n", state.pc - 4);  // New debug
@@ -330,6 +330,7 @@ int main(int argc, char *argv[]) {
             // <<< ADDED BLOCK END >>> */
 
             if (decoded.opcode == HALT) {
+                state.pc += 4;
                 break;  // simulate_instruction() for HALT will call exit(0) and print_final_state()
             }
         }
