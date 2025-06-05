@@ -1,27 +1,28 @@
 /*
-* Alex Jain - 05/30/2025
-* ECE 486 / Functional Simulator
-* * Takes elements from instruction_decoder.c and trace_reader.c
-* Runs a functional simulation of the instruction set architecture.
-*
-* Version 1.0 - Initial implementation.
-*/
+ * Alex Jain - 05/30/2025
+ * ECE 486 / Functional Simulator
+ * * Takes elements from instruction_decoder.c and trace_reader.c
+ * Runs a functional simulation of the instruction set architecture.
+ *
+ * Version 1.0 - Initial implementation.
+ */
 
-#include <stdlib.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include "instruction_decoder.h"
+
 #include "functional_sim.h"
+#include "instruction_decoder.h"
+#include "no_fwd.h"  // For pipeline simulator with no forwarding call.
 #include "trace_reader.h"
-#include "no_fwd.h" // For pipeline simulator with no forwarding call.
-#include "with_fwd.h" // For pipeline simulator with forwarding call.
+#include "with_fwd.h"  // For pipeline simulator with forwarding call.
 
 // Register Written Tracking and Memory Change Tracking
 int register_written[32] = {0};
-int memory_changed[1024] = {0}; // Tracks which memory addresses were modified
+int memory_changed[1024] = {0};  // Tracks which memory addresses were modified
 
-MachineState state; // Global machine state
+MachineState state;  // Global machine state
 
 // Instruction counters
 int total_instructions = 0;
@@ -32,11 +33,11 @@ int control_transfer_instructions = 0;
 
 // Initialize the machine state
 void initialize_machine_state() {
-    state.pc = 0; // Initialize PC to 0
-    memset(state.registers, 0, sizeof(state.registers)); // Initialize registers to 0
-    memset(state.memory, 0, sizeof(state.memory)); // Initialize memory to 0
-    memset(register_written, 0, sizeof(register_written)); // Reset register written tracking
-    memset(memory_changed, 0, sizeof(memory_changed)); // Reset memory change tracking
+    state.pc = 0;                                           // Initialize PC to 0
+    memset(state.registers, 0, sizeof(state.registers));    // Initialize registers to 0
+    memset(state.memory, 0, sizeof(state.memory));          // Initialize memory to 0
+    memset(register_written, 0, sizeof(register_written));  // Reset register written tracking
+    memset(memory_changed, 0, sizeof(memory_changed));      // Reset memory change tracking
     // Note: clock_cycles, total_stalls, total_flushes are in no_fwd.c and initialized there
 }
 
@@ -47,9 +48,7 @@ void simulate_instruction(DecodedInstruction instr) {
     // R0 (register 0) is always 0 and cannot be written
     if (instr.type == R_TYPE && instr.rd == 0) {
         // Attempting to write to R0. Do nothing, R0 remains 0.
-    } else if (instr.type == I_TYPE && (instr.opcode == ADDI || instr.opcode == SUBI || instr.opcode == MULI || 
-                                         instr.opcode == ORI || instr.opcode == ANDI || instr.opcode == XORI || 
-                                         instr.opcode == LDW) && instr.rt == 0) {
+    } else if (instr.type == I_TYPE && (instr.opcode == ADDI || instr.opcode == SUBI || instr.opcode == MULI || instr.opcode == ORI || instr.opcode == ANDI || instr.opcode == XORI || instr.opcode == LDW) && instr.rt == 0) {
         // Attempting to write to R0. Do nothing, R0 remains 0.
     } else {
         // Mark destination register as written if it's not R0
@@ -62,8 +61,7 @@ void simulate_instruction(DecodedInstruction instr) {
         }
     }
 
-
-    total_instructions++; // Increment total instructions executed by functional sim
+    total_instructions++;  // Increment total instructions executed by functional sim
 
     switch (instr.opcode) {
         // Arithmetic Instructions
@@ -141,10 +139,10 @@ void simulate_instruction(DecodedInstruction instr) {
                 // Handle error
             }
             state.memory[address / 4] = state.registers[instr.rt];
-            memory_changed[address / 4] = 1; // Mark memory as changed
+            memory_changed[address / 4] = 1;  // Mark memory as changed
             memory_access_instructions++;
             // Debug statement.
-            printf("  EXECUTED STW logic for PC (arch before this instr)=%u. About to break.\n", state.pc); // Use state.pc as it was at entry
+            printf("  EXECUTED STW logic for PC (arch before this instr)=%u. About to break.\n", state.pc);  // Use state.pc as it was at entry
             break;
         }
 
@@ -153,46 +151,48 @@ void simulate_instruction(DecodedInstruction instr) {
             if (state.registers[instr.rs] == 0) {
                 state.pc += ((int32_t)instr.immediate) * 4;
                 control_transfer_instructions++;
-                return; // PC has been updated, so return immediately
+                return;  // PC has been updated, so return immediately
             }
             control_transfer_instructions++;
-            break; // Fall through if branch not taken
+            break;  // Fall through if branch not taken
         case BEQ:
             if (state.registers[instr.rs] == state.registers[instr.rt]) {
                 state.pc += ((int32_t)instr.immediate) * 4;
                 control_transfer_instructions++;
-                return; // PC has been updated, so return immediately
+                return;  // PC has been updated, so return immediately
             }
             control_transfer_instructions++;
-            break; // Fall through if branch not taken
+            break;  // Fall through if branch not taken
         case JR:
-            state.pc = (uint32_t)state.registers[instr.rs]; // Jump to address in Rs
+            state.pc = (uint32_t)state.registers[instr.rs];  // Jump to address in Rs
             control_transfer_instructions++;
-            return; // PC has been updated, so return immediately
+            return;  // PC has been updated, so return immediately
         case HALT:
+            // 1) Count this instruction
             control_transfer_instructions++;
-            // state.pc += 4; // Increment PC for HALT itself for accurate final PC count
+            // 2) Advance PC by 4 _here_, so that final PC prints past HALT
+            state.pc += 4;  // Increment PC for HALT itself for accurate final PC count
             // Above line removed since it messed up FS's PC counter.
-            printf("--- HALT INSTRUCTION PROCESSING ---\n"); // New debug
-            printf("--- Architectural PC before this HALT was: %u ---\n", state.pc - 4); // New debug
-            printf("--- Architectural PC AFTER HALT increment is: %u ---\n", state.pc); // New debug
+            printf("--- HALT INSTRUCTION PROCESSING ---\n");                              // New debug
+            printf("--- Architectural PC before this HALT was: %u ---\n", state.pc - 4);  // New debug
+            printf("--- Architectural PC AFTER HALT increment is: %u ---\n", state.pc);   // New debug
             printf("Program halted.\n");
             // print_final_state(); // Print final state upon halt
             // fflush(stdout); // Testing to see if no_fwd.c receives this.
             // exit(0); // Exit the program (removed for break for testing purposes)
-            break;;
+            break;
+            ;
         case NOP:
             // Do nothing
             break;
         default:
             fprintf(stderr, "Error: Unknown opcode: 0x%02X at PC: 0x%08X\n", instr.opcode, state.pc);
-            exit(1); // Exit on unknown opcode
+            exit(1);  // Exit on unknown opcode
     }
 
     // Default program counter increment (if not branched or jumped)
     state.pc += 4;
 }
-
 
 // Print the final state of the machine after simulation.
 void print_final_state() {
@@ -267,7 +267,7 @@ int main(int argc, char *argv[]) {
         while (1) {
             uint32_t pc_before_simulate = state.pc;
 
-            if (state.pc >= 4096) { // Check for PC out of bounds
+            if (state.pc >= 4096) {  // Check for PC out of bounds
                 fprintf(stderr, "[FS_FOCUS_TRACE] PC out of bounds: %u\n", state.pc);
                 break;
             }
@@ -303,13 +303,13 @@ int main(int argc, char *argv[]) {
 
             if (log_this_instruction) {
                 printf("[FS_COMMIT] PC=0x%03X; Op=%-4s(0x%02X); Rd=%2d,Rs=%2d,Rt=%2d,Imm=%-6d || R1=%-4d,R2=%-4d,R3=%-4d,R4=%-4d,R5=%-3d,R6=%-3d,R8=%-4d,R10=%-2d,R11=%-2d,R12=%-2d || NextPC=0x%03X\n",
-                       state.pc, 
+                       state.pc,
                        opcode_to_string(decoded.opcode), decoded.opcode,
                        decoded.rd, decoded.rs, decoded.rt, decoded.immediate,
                        state.registers[1], state.registers[2], state.registers[3], state.registers[4],
                        state.registers[5], state.registers[6], state.registers[8], state.registers[10],
-                       state.registers[11], state.registers[12], 
-                       state.pc); // state.pc is the PC for the *next* instruction
+                       state.registers[11], state.registers[12],
+                       state.pc);  // state.pc is the PC for the *next* instruction
                 fflush(stdout);
             }
 
@@ -325,12 +325,12 @@ int main(int argc, char *argv[]) {
                    state.registers[5], state.registers[6], state.registers[7], state.registers[8],
                    state.registers[9], state.registers[10], state.registers[11], state.registers[12],
                    state.pc); // The new architectural PC for the *next* instruction
-            
+
             fflush(stdout); // Ensure output is printed immediately
             // <<< ADDED BLOCK END >>> */
 
             if (decoded.opcode == HALT) {
-                break; // simulate_instruction() for HALT will call exit(0) and print_final_state()
+                break;  // simulate_instruction() for HALT will call exit(0) and print_final_state()
             }
         }
         // If HALT doesn't exit, ensure print_final_state is called

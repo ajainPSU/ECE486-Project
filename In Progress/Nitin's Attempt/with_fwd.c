@@ -344,7 +344,7 @@ static void simulate_one_cycle_with_forwarding_internal() {
     // }
     // // If stall_for_load_use is true, pipeline[ID] was not updated from pipeline[IF],
     // // and pipeline[IF] was not updated by a new fetch below (it just holds its instruction).
-    
+
     // ─── Decide what goes into EX next ─────────────────────────────
     if (stall_for_load_use) {
         // We have to insert a bubble (NOP) in EX and keep ID as-is
@@ -410,6 +410,9 @@ void simulate_pipeline_with_forwarding() {
         }
 
         if (pipeline[WB].valid && pipeline[WB].instr.opcode == HALT) {
+            // 1) Retire HALT (this will bump all counters and advance PC by 4 inside simulate_instruction)
+            simulate_instruction(pipeline[WB].instr);
+            // 2) Now stop the pipeline loop
             break;
         }
 
@@ -425,7 +428,8 @@ void simulate_pipeline_with_forwarding() {
         }
     }
     // Fix state PC stuff
-    state.pc += 4;
+    // state.pc += 4;
+    // (No need for “state.pc += 4;” here anymore, since HALT is already handled above.)
 
     print_final_state();  // Print final state after simulation ends
 }
