@@ -1,10 +1,20 @@
 /*
-* Alex Jain & Brandon Duong - 05/25/2025
-* ECE 486 / Memory Trace Reader
-* This program takes the translated binary from trace_reader.c
-* and decodes them into the project specified instruction set.
+* Instruction Decoder
+* This file contains the implementation of the instruction decoder for MIPS-lite instructions.
+* It decodes binary instructions into a structured format and provides utility functions.
+* The decoder supports R-type and I-type instructions, extracting relevant fields such as opcode,
+* source registers, destination registers, and immediate values.
+* It also includes a function to convert opcodes to their string representations.
 *
-* Version 1.2 - Integrated trace_reader.h and trace_reader.c for functionality.
+* Supported Operations:
+* - R-type instructions: ADD, SUB, MUL, OR, AND, XOR
+* - I-type instructions: ADDI, SUBI, MULI, ORI, ANDI, XORI, LDW, STW, BZ, BEQ, JR, HALT, NOP
+*
+* Functions:
+* - get_instruction_type: Determines the type of instruction based on the opcode.
+* - decode_instruction: Decodes a binary instruction into a structured format.
+* - opcode_to_string: Converts an opcode to its string representation.
+*
 */
 
 #include <stdio.h>
@@ -12,7 +22,12 @@
 #include "functional_sim.h" // Needed for simulate_instruction and global state
 #include "instruction_decoder.h"
 
-// Function to get instruction type based on opcode.
+/*
+* Instruction Types
+* R_TYPE: Register type instructions that operate on registers.
+* I_TYPE: Immediate type instructions that include immediate values.
+* INVALID_TYPE: Used for unrecognized or invalid instructions.
+*/
 InstrType get_instruction_type(uint8_t opcode) {
     switch (opcode) {
         case ADD: case SUB: case MUL:
@@ -29,7 +44,12 @@ InstrType get_instruction_type(uint8_t opcode) {
     }
 } 
 
-// Function to decode a binary instruction.
+/*
+* DecodedInstruction Structure
+* This structure holds the decoded instruction fields.
+* It includes the opcode, instruction type, source registers (rs, rt), destination register (rd),
+* and immediate value (for I-type instructions).
+*/
 DecodedInstruction decode_instruction(uint32_t instr) {
     DecodedInstruction decoded;
     decoded.opcode = (Opcode)((instr >> 26) & 0x3F); // Extract opcode (bits 31-26)
@@ -70,7 +90,13 @@ DecodedInstruction decode_instruction(uint32_t instr) {
     return decoded;
 }
 
-// Function to convert opcode to string.
+/*
+* Opcode to String Conversion
+* This function converts an opcode to its string representation.
+* It is useful for debugging and logging purposes.
+* It returns a string literal corresponding to the opcode.
+* If the opcode is unknown, it returns "UNKNOWN".
+*/
 const char* opcode_to_string(Opcode op) {
     switch (op) {
         case ADD: return "ADD"; case ADDI: return "ADDI";
@@ -87,8 +113,12 @@ const char* opcode_to_string(Opcode op) {
     }
 }
 
-// This function is for the functional simulator's direct execution.
-// It's called by trace_reader for FS mode, or by functional_sim.c directly.
+/*
+* Process Binary Instruction
+* This function takes a binary instruction value, decodes it,
+* and simulates the instruction using the global state.
+* It is the entry point for processing binary instructions in the functional simulator.
+*/
 void process_binary(unsigned int value) {
     DecodedInstruction decoded = decode_instruction(value);
     simulate_instruction(decoded);
