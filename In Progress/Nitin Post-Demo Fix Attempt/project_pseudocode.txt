@@ -1,0 +1,135 @@
+// Legend:
+// “rawLines”      – Lines read from the input file (each line is one instruction in hex text)
+// “binaryLines”   – Same instructions converted into binary numbers we can work with
+// “instructions”  – A list of simple instruction objects, each telling us “what to do” and “what data to use”
+// “state”         – The processor’s current status: where we are in the program, the values in its registers, and its memory contents
+// “counts”        – How many times we did each kind of instruction (e.g., arithmetic, memory access, branches)
+// “hazards”       – Places where one instruction needed data from another and had to wait
+// “cycles”        – How many clock ticks it took to finish everything
+// “speedup”       – How many times faster the “with shortcuts” version ran compared to the basic version
+
+function Main():
+    // 1. Load the instructions as text
+    rawLines    := readLinesFromFile("memory_image.txt")
+    // 2. Turn each line of hex text into binary numbers
+    binaryLines := hexListToBinary(rawLines)
+    // 3. Break each binary number into a simple instruction object
+    instructions := parseBinaryToInstructions(binaryLines)
+
+    // 4. Run a straightforward, one-at-a-time simulation
+    (state, counts) := simpleSimulation(instructions)
+
+    // 5. Simulate a 5-step pipeline WITHOUT any data shortcuts
+    (cyclesNoOpt, hazardsNoOpt) := pipelineSimulation(instructions, useForwarding=false)
+
+    // 6. Simulate the same pipeline WITH data shortcuts (forwarding)
+    (cyclesOpt, hazardsOpt) := pipelineSimulation(instructions, useForwarding=true)
+
+    // 7. Compare how much faster the forwarding version is
+    speedup := cyclesNoOpt / cyclesOpt
+
+    // 8. Produce the final report for the project
+    writeReport(state, counts, hazardsNoOpt, hazardsOpt, cyclesNoOpt, cyclesOpt, speedup)
+
+
+
+//-------------------------------
+// Support function details below
+// (Each is written so someone new to MIPS can follow)
+
+// Read every line from a text file into a list
+function readLinesFromFile(filename):
+    open filename
+    rawLines := empty list
+    for each line in file:
+        trimmed := removeWhitespace(line)
+        rawLines.append(trimmed)
+    return rawLines
+
+// Convert a list of hex strings into binary representations
+function hexListToBinary(hexList):
+    binaryLines := empty list
+    for each hexStr in hexList:
+        binValue := convertHexStringToBinary(hexStr)
+        binaryLines.append(binValue)
+    return binaryLines
+
+// Turn each binary value into an instruction object
+function parseBinaryToInstructions(binaryLines):
+    instructions := empty list
+    for each bits in binaryLines:
+        opCode := first 6 bits of bits
+        if opCode means “register-style”:
+            // E.g., add two registers, store in a third
+            rs := next 5 bits
+            rt := next 5 bits
+            rd := next 5 bits
+            instructions.append({type:"R", opCode, rs, rt, rd})
+        else:
+            // E.g., load/store or immediate arithmetic
+            rs  := next 5 bits
+            rt  := next 5 bits
+            imm := last 16 bits
+            instructions.append({type:"I", opCode, rs, rt, imm})
+    return instructions
+
+// Run each instruction one after another, updating PC, registers, and memory
+function simpleSimulation(instructions):
+    PC    := 0                    // Start at the first instruction
+    regs  := array of 32 zeros    // All registers clear
+    mem   := array of 1024 words loaded from file
+    counts := {arithmetic:0, memory:0, control:0, logical:0}
+
+    loop forever:
+        instr := instructions[PC/4]  // Find current instruction
+        if instr is arithmetic:
+            perform the math, store result in regs
+            counts.arithmetic += 1
+        else if instr is logical:
+            perform bitwise operation, update regs
+            counts.logical += 1
+        else if instr is load or store:
+            read or write mem using regs and imm
+            counts.memory += 1
+        else if instr is branch or HALT:
+            change PC or stop simulation
+            counts.control += 1
+
+        if instr was HALT:
+            break    // stop the loop
+        else if instr did not jump:
+            PC += 4  // move to next instruction
+    end loop
+
+    return (state={PC, regs, mem}, counts)
+
+
+// Simulate a 5-stage pipeline:
+// stages are Fetch → Decode → Execute → Memory → WriteBack
+// “useForwarding” decides whether we allow data to skip ahead or not
+function pipelineSimulation(instructions, useForwarding):
+    clock   := 0
+    pipeline := empty 5-slot buffer
+    hazards  := empty list
+
+    while pipeline not empty or more instructions to start:
+        if useForwarding:
+            checkForDataShortcuts(pipeline, hazards)
+        else:
+            insertStallsForDataHazards(pipeline, hazards)
+        moveInstructionsToNextStage(pipeline, instructions)
+        clock += 1
+    end while
+
+    return (clock, hazards)
+
+
+// Create a simple text or PDF report summarizing everything
+// Alternatively, print to terminal for display
+function writeReport(state, counts, hazardsNoOpt, hazardsOpt, cyclesNoOpt, cyclesOpt, speedup):
+    // Write out:
+    //  • How many instructions ran, by type
+    //  • Final register and memory snapshot
+    //  • Where and why the pipeline stalled (with/without forwarding)
+    //  • Total cycle counts and calculated speedup
+    saveToDocument(...)
