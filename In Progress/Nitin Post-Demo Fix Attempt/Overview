@@ -1,0 +1,3 @@
+FS = Functional Simulator
+NF = Functional Simulator + No Forwarding Pipeline
+WF = Functional Simulator + With Forwarding Pipeline
