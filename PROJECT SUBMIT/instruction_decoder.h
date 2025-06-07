@@ -1,3 +1,10 @@
+/*
+* Instruction Decoder Header File
+* This file defines the structures and functions for decoding instructions in MIPS-lite.
+* It includes enums for opcodes and instruction types, a structure for decoded instructions,
+* and function prototypes for decoding instructions and processing binary values.
+*/
+
 #ifndef INSTRUCTION_DECODER_H
 #define INSTRUCTION_DECODER_H
 
