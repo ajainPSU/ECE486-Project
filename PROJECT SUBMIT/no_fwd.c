@@ -1,3 +1,40 @@
+/*
+* Pipeline Simulation with No Forwarding
+* This file implements a simple pipeline simulation without forwarding.
+* It simulates a 5-stage pipeline with instruction fetch, decode, execute,
+* memory access, and write-back stages.
+* The pipeline handles hazards, stalls, and flushing as needed.
+* It also includes debugging statements to trace the execution flow.
+* The pipeline depth is set to 5 stages.
+* The simulation stops when a HALT instruction is encountered.
+* The pipeline is initialized with NOP instructions.
+* The simulation tracks clock cycles, stalls, and flushes.
+* The pipeline uses a circular buffer to hold the pipeline registers.
+*
+* Supported Operations:
+* - Instruction Fetch (IF)
+* - Instruction Decode (ID)
+* - Execute (EX)
+* - Memory Access (MEM)
+* - Write Back (WB)
+* - Hazard Detection (RAW)
+* - Branch Resolution
+* - NOP Insertion
+* - HALT Handling
+* - Debugging Output
+*
+* Functions:
+* - is_nop: Checks if an instruction is a NOP.
+* - insert_nop: Inserts a NOP instruction into a specified pipeline stage.
+* - initialize_pipeline: Initializes the pipeline with NOPs.
+* - get_dest_reg: Returns the destination register for an instruction.
+* - is_source_reg: Checks if a register is a source register for an instruction.
+* - detect_raw_hazard: Detects RAW hazards in the pipeline.
+* - simulate_one_cycle_no_forwarding_internal: Simulates one clock cycle of the pipeline.
+* - simulate_pipeline_no_forwarding: Main function to run the pipeline simulation.
+*
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,12 +61,21 @@ static uint32_t pipeline_pc = 0; // This tracks the PC of the instruction to be 
 static int pipeline_halt_seen = 0; // Flag to indicate if HALT instruction has been fetched
 
 
-// Check if instruction is NOP
+/*
+* Function to check if an instruction is a NOP (No Operation)
+* This function checks if the opcode of the instruction is NOP.
+* It returns 1 if the instruction is a NOP, otherwise returns 0.
+*/
 int is_nop(DecodedInstruction instr) {
     return instr.opcode == NOP;
 }
 
-// Insert a NOP into a pipeline stage
+/*
+* Function to insert a NOP instruction into a specified pipeline stage
+* This function sets the instruction in the specified stage to NOP,
+* marks it as invalid, clears the PC, and resets branch flags.
+* It is used to handle stalls or flushes in the pipeline.
+*/
 void insert_nop(int stage, PipelineRegister pipeline_arr[]) {
     pipeline_arr[stage].instr = NOP_INSTRUCTION;
     pipeline_arr[stage].valid = 0; // Mark as invalid (NOP)
@@ -39,21 +85,18 @@ void insert_nop(int stage, PipelineRegister pipeline_arr[]) {
     pipeline_arr[stage].result_val = 0; // Clear result
 }
 
-// Initialize pipeline to NOPs
+/*
+* Function to initialize the pipeline with NOP instructions
+* This function fills the pipeline with NOP instructions for each stage.
+* It sets the pipeline PC to 0, resets the halt flag, and initializes
+* the clock cycle count and instruction counters.
+*/
 void initialize_pipeline(PipelineRegister pipeline_arr[]) {
     for (int i = 0; i < PIPELINE_DEPTH; i++) {
         insert_nop(i, pipeline_arr);
     }
     pipeline_pc = 0; // Start fetching from address 0
     pipeline_halt_seen = 0;
-    // NOTE: These counters are global and reset by global_counters.c if that's where they are defined,
-    // or by functional_sim's initialize_machine_state().
-    // If you want them specifically reset for EACH pipeline run (NF or WF),
-    // then they would need to be local to this file or passed around.
-    // For now, assuming they are truly global and persist between mode runs unless `initialize_machine_state` resets them.
-    // However, for the output requirement of "Total stalls" and "Total number of clock cycles" specific to the *current* run,
-    // it's better to reset them explicitly here at the start of each simulation.
-    // I'll keep the explicit resets here.
     clock_cycles = 0;
     total_stalls = 0;
     total_flushes = 0;
@@ -64,7 +107,14 @@ void initialize_pipeline(PipelineRegister pipeline_arr[]) {
     control_transfer_instructions = 0;
 }
 
-// Function to check if a register is a destination register for an instruction
+/*
+* Function to get the destination register for an instruction
+* This function returns the destination register number for a given instruction.
+* For R-type instructions, it returns the rd field.
+* For I-type instructions, it returns the rt field for ADDI, SUBI, MULI, ORI, ANDI, XORI, and LDW.
+* If the instruction does not have a destination register, it returns -1.
+* This is used to check for RAW hazards in the pipeline.
+*/
 int get_dest_reg(DecodedInstruction instr) {
     if (instr.type == R_TYPE) {
         return instr.rd;
@@ -76,7 +126,20 @@ int get_dest_reg(DecodedInstruction instr) {
     return -1; // No destination register
 }
 
-// Function to check if a register is a source register for an instruction
+/*
+* Function to check if a register is a source register for an instruction
+* This function checks if a given register number is a source register for the instruction.
+* It returns 1 if the register is a source register, otherwise returns 0.
+* For R-type instructions, it checks if the register is either rs or rt.
+* For I-type instructions, it checks based on the opcode:
+* - BZ: checks rs
+* - BEQ: checks rs and rt
+* - JR: checks rs
+* - STW: checks rs and rt (rt is the value to store)
+* - Other I-type instructions: checks rs and rt (rt is the value to store)
+* Note: R0 is not considered a source register.
+* This is used to detect RAW hazards in the pipeline.
+*/
 int is_source_reg(DecodedInstruction instr, int reg_num) {
     if (reg_num == 0) return 0;
 
@@ -96,7 +159,23 @@ int is_source_reg(DecodedInstruction instr, int reg_num) {
     return 0;
 }
 
-// Detect RAW hazard (now expects PipelineRegister as first arg)
+/*
+* Function to detect RAW hazards in the pipeline
+* This function checks for RAW hazards between the current ID stage instruction
+* and the EX and MEM stage instructions.
+* It returns 1 if a RAW hazard is detected, otherwise returns 0.
+* It checks if the source registers of the current ID instruction match
+* the destination registers of the EX and MEM stage instructions.
+* It considers R0 as not a hazard source/destination.
+* It also handles STW instructions, which use rt as a source register (value to store).
+* The function uses the get_dest_reg function to get the destination registers
+* of the EX and MEM stage instructions.
+* The function also checks if the current ID instruction is valid and not a NOP or HALT.
+* If a hazard is detected, it returns 1, indicating a stall is needed.
+* If no hazard is detected, it returns 0.
+* This function is called during the ID stage of the pipeline to check for hazards.
+* It is used to determine if the pipeline needs to stall due to a RAW hazard.
+*/
 int detect_raw_hazard(PipelineRegister curr_id_reg, PipelineRegister ex_reg, PipelineRegister mem_reg) {
     if (!curr_id_reg.valid || is_nop(curr_id_reg.instr) || curr_id_reg.instr.opcode == HALT) return 0;
 
@@ -114,8 +193,6 @@ int detect_raw_hazard(PipelineRegister curr_id_reg, PipelineRegister ex_reg, Pip
     if (src2 == 0) src2 = -1;
 
     int ex_dest = -1;
-    // The filter on producer instructions (ex_reg.instr.opcode != BZ etc.) might still be something to review later
-    // but let's ensure sources are correct first.
     if (ex_reg.valid && !is_nop(ex_reg.instr) /* && ex_reg.instr.opcode != HALT ... (existing filters) */ ) {
         ex_dest = get_dest_reg(ex_reg.instr);
         if (ex_dest == 0) ex_dest = -1; // Do not consider R0 as a written destination
@@ -135,7 +212,24 @@ int detect_raw_hazard(PipelineRegister curr_id_reg, PipelineRegister ex_reg, Pip
     return 0;
 }
 
-// Simulate one clock cycle of the pipeline (No Forwarding)
+/*
+* Function to simulate one cycle of the pipeline without forwarding
+* This function simulates one clock cycle of the pipeline without forwarding.
+* It handles instruction fetch, decode, execute, memory access, and write-back stages.
+* It also detects hazards, stalls, and flushes as needed.
+* The function updates the pipeline registers and the program counter (PC).
+* It also prints debugging information about the pipeline state and instruction execution.
+* The function is called repeatedly to simulate the pipeline until a HALT instruction is encountered.
+* It uses a circular buffer to hold the pipeline registers.
+* The function also handles branch resolution and updates the PC accordingly.
+* It checks for RAW hazards in the ID stage and stalls the pipeline if necessary.
+* The function also handles flushing the pipeline if a branch is taken.
+* It prints debugging statements to trace the execution flow and state of the pipeline.
+* The function is designed to be called in a loop until the pipeline is empty or a HALT instruction is processed.
+* It also includes debugging statements to trace the execution flow and state of the pipeline.
+* The function is called by the main simulation loop in simulate_pipeline_no_forwarding.
+* It is responsible for managing the pipeline stages and ensuring correct execution of instructions.
+*/
 void simulate_one_cycle_no_forwarding_internal() {
     clock_cycles++;
 
@@ -163,21 +257,17 @@ void simulate_one_cycle_no_forwarding_internal() {
     // --- Stage Execution (in reverse order for pipeline integrity) ---
     // 1. WB stage execution: Instructions commit and update architectural state
     if (pipeline[WB].valid && !is_nop(pipeline[WB].instr)) {
-        // --- ADD THIS DEBUG BLOCK ---
         if (pipeline[WB].instr.opcode == HALT) {
             DBG_PRINTF("[PIPE_DEBUG] HALT in WB. pipeline[WB].pc = 0x%X. Current state.pc BEFORE assignment = 0x%X\n", 
                    pipeline[WB].pc, state.pc);
         }
-        // --- END DEBUG BLOCK ---
 
         state.pc = pipeline[WB].pc;
 
-        // --- ADD THIS DEBUG BLOCK ---
         if (pipeline[WB].instr.opcode == HALT) {
             DBG_PRINTF("[PIPE_DEBUG] HALT in WB. state.pc AFTER assignment (entry to simulate_instruction) = 0x%X\n", 
                    state.pc);
         }
-        // --- END DEBUG BLOCK ---
 
         simulate_instruction(pipeline[WB].instr);
     } 
@@ -288,21 +378,34 @@ void simulate_one_cycle_no_forwarding_internal() {
     }
 }
 
-// In no_fwd_v6.c
+/*
+* Function to simulate the pipeline without forwarding
+* This function runs the pipeline simulation without forwarding.
+* It initializes the pipeline, simulates one cycle at a time,
+* and checks for HALT instructions to stop the simulation.
+* It also tracks the number of instructions executed and handles
+* the final state of the pipeline.
+* The function continues to simulate until a HALT instruction is processed
+* or the pipeline is empty.
+* It prints the final state of the pipeline and the architectural state.
+* The function is designed to be called by the main simulation loop.
+* It handles the entire pipeline execution flow, including instruction fetch,
+* decode, execute, memory access, and write-back stages.
+* It also includes debugging statements to trace the execution flow and state of the pipeline.
+* The function is responsible for managing the pipeline stages and ensuring correct execution of instructions.
+* It also handles stalls, flushes, and hazard detection as needed.
+* The function is called by the main simulation loop in functional_sim.c.
+* It is the main entry point for running the pipeline simulation without forwarding.
+*/
 void simulate_pipeline_no_forwarding() {
     initialize_pipeline(pipeline);
     int final_halt_processed_in_wb = 0; // Flag
 
     while (1) {
-        /*if (final_halt_processed_in_wb) { // If HALT was processed last cycle, ensure we break now
-            break;
-        } */
         simulate_one_cycle_no_forwarding_internal(); 
 
         if (pipeline[WB].valid && pipeline[WB].instr.opcode == HALT) {
-            // We've just simulated HALT in WB. Its architectural effects are now in globals.
-            // Set a flag to break in the *next* iteration, allowing pipeline to empty if needed for counts.
-            // Or, if pipeline is truly empty now except for HALT in WB, we can break.
+
             final_halt_processed_in_wb = 1; // Signal that HALT has been architecturally processed
             state.pc += 4;
             total_instructions++;
@@ -334,46 +437,7 @@ void simulate_pipeline_no_forwarding() {
             break;
         }
     }
-    // This print_final_state() should now have the correct values
-    // because simulate_instruction(HALT) updated them, and then the loop broke.
-    // Cheap solution
 
     print_final_state(); 
     // Note: Not iterating PC by 4 again, or instruction counts by 1 again.
 }
-
-/*
-// Moved to comment for debugging purposes
-// Main function to run the simulator (no forwarding)
-void simulate_pipeline_no_forwarding() {
-    initialize_pipeline(pipeline);
-
-    while (1) {
-        simulate_one_cycle_no_forwarding_internal();
-
-        int active_instructions_remaining = 0;
-        for (int i = 0; i < PIPELINE_DEPTH; i++) {
-            if (pipeline[i].valid && pipeline[i].instr.opcode != NOP) {
-                active_instructions_remaining = 1;
-                break;
-            }
-        }
-
-        if (pipeline[WB].valid && pipeline[WB].instr.opcode == HALT) {
-            // This break only triggers if exit(0) doesn't work.
-            break;
-        }
-
-        if (!active_instructions_remaining && (pipeline_halt_seen || pipeline_pc >= (MAX_MEMORY_LINES * WORD_SIZE))) {
-            // DEBUG Statement
-             printf("Program finished (pipeline drained).\n");
-             break;
-        }
-
-        if (clock_cycles > 100000) {
-            fprintf(stderr, "Simulator possibly in infinite loop, breaking.\n");
-            break;
-        }
-    }
-    print_final_state(); // Print final state of registers and memory
-} */
