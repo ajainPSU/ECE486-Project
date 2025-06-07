@@ -1,3 +1,9 @@
+/*
+* Trace Reader Header File
+* This file contains the necessary declarations for reading a memory image from a file.
+* It defines constants, function prototypes, and includes necessary headers.
+*/
+
 #ifndef TRACE_READER_H
 #define TRACE_READER_H
 
