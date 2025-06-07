@@ -23,6 +23,9 @@ int memory_changed[1024] = {0}; // Tracks which memory addresses were modified
 
 MachineState state; // Global machine state
 
+// Define the debug flag
+int debug_enabled = 0;
+
 // Instruction counters
 int total_instructions = 0;
 int arithmetic_instructions = 0;
@@ -42,7 +45,7 @@ void initialize_machine_state() {
 
 void simulate_instruction(DecodedInstruction instr) {
     // Debug Statement
-    printf("SIMULATE_INSTRUCTION called with PC (arch before this instr)=%u, Opcode=0x%X, rs=%d, rt=%d, rd=%d, imm=%d\n",
+    DBG_PRINTF("SIMULATE_INSTRUCTION called with PC (arch before this instr)=%u, Opcode=0x%X, rs=%d, rt=%d, rd=%d, imm=%d\n",
            state.pc, instr.opcode, instr.rs, instr.rt, instr.rd, instr.immediate);
     // R0 (register 0) is always 0 and cannot be written
     if (instr.type == R_TYPE && instr.rd == 0) {
@@ -124,7 +127,7 @@ void simulate_instruction(DecodedInstruction instr) {
             int32_t address = state.registers[instr.rs] + instr.immediate;
             // Check for unaligned access (optional, depending on ISA spec)
             if (address % 4 != 0) {
-                fprintf(stderr, "Error: Unaligned memory access at address 0x%X for LDW\n", address);
+                DBG_PRINTF(stderr, "Error: Unaligned memory access at address 0x%X for LDW\n", address);
                 // Handle error: perhaps exit or ignore, based on project spec
             }
             // Memory is word-addressable in our simulation (address / 4)
@@ -137,14 +140,14 @@ void simulate_instruction(DecodedInstruction instr) {
             int32_t address = state.registers[instr.rs] + instr.immediate;
             // Check for unaligned access (optional)
             if (address % 4 != 0) {
-                fprintf(stderr, "Error: Unaligned memory access at address 0x%X for STW\n", address);
+                DBG_PRINTF(stderr, "Error: Unaligned memory access at address 0x%X for STW\n", address);
                 // Handle error
             }
             state.memory[address / 4] = state.registers[instr.rt];
             memory_changed[address / 4] = 1; // Mark memory as changed
             memory_access_instructions++;
             // Debug statement.
-            printf("  EXECUTED STW logic for PC (arch before this instr)=%u. About to break.\n", state.pc); // Use state.pc as it was at entry
+            DBG_PRINTF("  EXECUTED STW logic for PC (arch before this instr)=%u. About to break.\n", state.pc); // Use state.pc as it was at entry
             break;
         }
 
@@ -173,10 +176,10 @@ void simulate_instruction(DecodedInstruction instr) {
             control_transfer_instructions++;
             // state.pc += 4; // Increment PC for HALT itself for accurate final PC count
             // Above line removed since it messed up FS's PC counter.
-            printf("--- HALT INSTRUCTION PROCESSING ---\n"); // New debug
-            printf("--- Architectural PC before this HALT was: %u ---\n", state.pc - 4); // New debug
-            printf("--- Architectural PC AFTER HALT increment is: %u ---\n", state.pc); // New debug
-            printf("Program halted.\n");
+            DBG_PRINTF("--- HALT INSTRUCTION PROCESSING ---\n"); // New debug
+            DBG_PRINTF("--- Architectural PC before this HALT was: %u ---\n", state.pc - 4); // New debug
+            DBG_PRINTF("--- Architectural PC AFTER HALT increment is: %u ---\n", state.pc); // New debug
+            DBG_PRINTF("Program halted.\n");
             // print_final_state(); // Print final state upon halt
             // fflush(stdout); // Testing to see if no_fwd.c receives this.
             // exit(0); // Exit the program (removed for break for testing purposes)
@@ -185,7 +188,7 @@ void simulate_instruction(DecodedInstruction instr) {
             // Do nothing
             break;
         default:
-            fprintf(stderr, "Error: Unknown opcode: 0x%02X at PC: 0x%08X\n", instr.opcode, state.pc);
+            DBG_PRINTF(stderr, "Error: Unknown opcode: 0x%02X at PC: 0x%08X\n", instr.opcode, state.pc);
             exit(1); // Exit on unknown opcode
     }
 
@@ -235,9 +238,15 @@ void print_final_state() {
 
 // Main function to run the simulator
 int main(int argc, char *argv[]) {
-    if (argc != 3) {
-        fprintf(stderr, "Usage: %s <memory_image_file> <FS|NF|WF>\n", argv[0]);
-        return 1;
+    // Accepts an optional 4th argument (“-d” or “--debug”)
+    if (argc < 3 || argc > 4) {
+         fprintf(stderr, "Usage: %s <memory_image_file> <FS|NF|WF>\n", argv[0]);
+         return 1;
+    }
+    // If the user passed a 4th argument, check for debug
+    if (argc == 4 &&
+        (strcmp(argv[3], "-d") == 0 || strcmp(argv[3], "--debug") == 0)) {
+        debug_enabled = 1;
     }
 
     const char *memory_image_file = argv[1];
@@ -263,12 +272,12 @@ int main(int argc, char *argv[]) {
     if (strcmp(mode, "FS") == 0) {
         // Run functional simulation loop
         // ADDED FS Trace Start
-        printf("[FS_FOCUS_TRACE_START]\n");
+        DBG_PRINTF("[FS_FOCUS_TRACE_START]\n");
         while (1) {
             uint32_t pc_before_simulate = state.pc;
 
             if (state.pc >= 4096) { // Check for PC out of bounds
-                fprintf(stderr, "[FS_FOCUS_TRACE] PC out of bounds: %u\n", state.pc);
+                DBG_PRINTF(stderr, "[FS_FOCUS_TRACE] PC out of bounds: %u\n", state.pc);
                 break;
             }
             uint32_t instr_word = state.memory[state.pc / 4];
@@ -302,7 +311,7 @@ int main(int argc, char *argv[]) {
             }
 
             if (log_this_instruction) {
-                printf("[FS_COMMIT] PC=0x%03X; Op=%-4s(0x%02X); Rd=%2d,Rs=%2d,Rt=%2d,Imm=%-6d || R1=%-4d,R2=%-4d,R3=%-4d,R4=%-4d,R5=%-3d,R6=%-3d,R8=%-4d,R10=%-2d,R11=%-2d,R12=%-2d || NextPC=0x%03X\n",
+                DBG_PRINTF("[FS_COMMIT] PC=0x%03X; Op=%-4s(0x%02X); Rd=%2d,Rs=%2d,Rt=%2d,Imm=%-6d || R1=%-4d,R2=%-4d,R3=%-4d,R4=%-4d,R5=%-3d,R6=%-3d,R8=%-4d,R10=%-2d,R11=%-2d,R12=%-2d || NextPC=0x%03X\n",
                        state.pc, 
                        opcode_to_string(decoded.opcode), decoded.opcode,
                        decoded.rd, decoded.rs, decoded.rt, decoded.immediate,
@@ -335,7 +344,7 @@ int main(int argc, char *argv[]) {
         }
         // If HALT doesn't exit, ensure print_final_state is called
         // print_final_state(); // Called by HALT instruction in simulate_instruction
-        printf("[FS_FOCUS_TRACE_END]\n");
+        DBG_PRINTF("[FS_FOCUS_TRACE_END]\n");
         print_final_state();
         return 0;
 

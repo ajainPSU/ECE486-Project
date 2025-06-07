@@ -15,7 +15,7 @@
 #include <string.h>
 
 int read_memory_image(const char *filename, uint32_t *memory) {
-    printf("Attempting to open file: %s\n", filename); // Debugging output
+    DBG_PRINTF("Attempting to open file: %s\n", filename); // Debugging output
 
     FILE *file = fopen(filename, "r");
     if (!file) {
@@ -27,7 +27,7 @@ int read_memory_image(const char *filename, uint32_t *memory) {
     uint32_t value;
     while (fscanf(file, "%x", &value) == 1) {
         if (word_count >= 1024) { // Ensure we don't exceed memory bounds
-            fprintf(stderr, "Error: Memory image exceeds 4KB limit\n");
+            DBG_PRINTF(stderr, "Error: Memory image exceeds 4KB limit\n");
             fclose(file);
             return -1; // Return -1 if memory limit is exceeded
         }

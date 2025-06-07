@@ -141,21 +141,21 @@ void simulate_one_cycle_no_forwarding_internal() {
 
     // Debugging Statements
     // --- Optional: Print header for the current cycle ---
-    printf("Clock cycle: %d\n", clock_cycles);
-    printf("  Reg State: R1=%d, R2=%d, R3=%d, R4=%d, R5=%d, R6=%d, R7=%d, R8=%d, R9=%d, R10=%d, R11=%d, R12=%d, R13=%d, R14=%d, R15=%d\n",
+    DBG_PRINTF("Clock cycle: %d\n", clock_cycles);
+    DBG_PRINTF("  Reg State: R1=%d, R2=%d, R3=%d, R4=%d, R5=%d, R6=%d, R7=%d, R8=%d, R9=%d, R10=%d, R11=%d, R12=%d, R13=%d, R14=%d, R15=%d\n",
            state.registers[1], state.registers[2], state.registers[3], state.registers[4], state.registers[5],
            state.registers[6], state.registers[7], state.registers[8], state.registers[9], state.registers[10],
            state.registers[11], state.registers[12], state.registers[13], state.registers[14], state.registers[15]);
 
-    printf("Pipeline state: IF=%s, ID=%s, EX=%s, MEM=%s, WB=%s\n",
+    DBG_PRINTF("Pipeline state: IF=%s, ID=%s, EX=%s, MEM=%s, WB=%s\n",
            opcode_to_string(pipeline[IF].instr.opcode), opcode_to_string(pipeline[ID].instr.opcode),
            opcode_to_string(pipeline[EX].instr.opcode), opcode_to_string(pipeline[MEM].instr.opcode),
            opcode_to_string(pipeline[WB].instr.opcode));
-    printf("Pipeline PC: %u\n", pipeline_pc);
+    DBG_PRINTF("Pipeline PC: %u\n", pipeline_pc);
 
     // Debugging PC at 88
     if (pipeline[WB].valid && pipeline[WB].pc == 88) {
-        printf("DEBUG WB (Cycle %d): PC=%u, Opcode in pipeline[WB].instr = 0x%X, Expected STW (0x0D)\n",
+        DBG_PRINTF("DEBUG WB (Cycle %d): PC=%u, Opcode in pipeline[WB].instr = 0x%X, Expected STW (0x0D)\n",
             clock_cycles, pipeline[WB].pc, pipeline[WB].instr.opcode);
 
     }
@@ -165,7 +165,7 @@ void simulate_one_cycle_no_forwarding_internal() {
     if (pipeline[WB].valid && !is_nop(pipeline[WB].instr)) {
         // --- ADD THIS DEBUG BLOCK ---
         if (pipeline[WB].instr.opcode == HALT) {
-            printf("[PIPE_DEBUG] HALT in WB. pipeline[WB].pc = 0x%X. Current state.pc BEFORE assignment = 0x%X\n", 
+            DBG_PRINTF("[PIPE_DEBUG] HALT in WB. pipeline[WB].pc = 0x%X. Current state.pc BEFORE assignment = 0x%X\n", 
                    pipeline[WB].pc, state.pc);
         }
         // --- END DEBUG BLOCK ---
@@ -174,7 +174,7 @@ void simulate_one_cycle_no_forwarding_internal() {
 
         // --- ADD THIS DEBUG BLOCK ---
         if (pipeline[WB].instr.opcode == HALT) {
-            printf("[PIPE_DEBUG] HALT in WB. state.pc AFTER assignment (entry to simulate_instruction) = 0x%X\n", 
+            DBG_PRINTF("[PIPE_DEBUG] HALT in WB. state.pc AFTER assignment (entry to simulate_instruction) = 0x%X\n", 
                    state.pc);
         }
         // --- END DEBUG BLOCK ---
@@ -190,7 +190,7 @@ void simulate_one_cycle_no_forwarding_internal() {
         (pipeline[EX].instr.opcode == BEQ || pipeline[EX].instr.opcode == BZ || pipeline[EX].instr.opcode == JR)) {
 
         // DEBUG Statement
-        printf("  Branch check in EX: PC=%u, Opcode=%d\n", pipeline[EX].pc, pipeline[EX].instr.opcode);
+        DBG_PRINTF("  Branch check in EX: PC=%u, Opcode=%d\n", pipeline[EX].pc, pipeline[EX].instr.opcode);
 
         int is_branch_taken = 0;
         uint32_t branch_resolved_target_pc = 0;
@@ -217,7 +217,7 @@ void simulate_one_cycle_no_forwarding_internal() {
             branch_flush_this_cycle = 1;
             total_flushes += 2;
             // DEBUG Statement
-            printf("Branch taken in EX stage. Flushing IF and ID. New PC: %u\n", pipeline_pc);
+            DBG_PRINTF("Branch taken in EX stage. Flushing IF and ID. New PC: %u\n", pipeline_pc);
         }
     }
 
@@ -231,7 +231,7 @@ void simulate_one_cycle_no_forwarding_internal() {
 
         if (raw_hazard_stall_this_cycle) {
             // DEBUG Statement
-            printf("RAW hazard detected. Stalling pipeline.\n");
+            DBG_PRINTF("RAW hazard detected. Stalling pipeline.\n");
             total_stalls++;
         }
     }
@@ -243,7 +243,7 @@ void simulate_one_cycle_no_forwarding_internal() {
         pipeline[MEM] = pipeline[EX];
         insert_nop(EX, pipeline);
         // DEBUG Statement
-        printf("Pipeline stalled. Inserting NOP into EX stage.\n");
+        DBG_PRINTF("Pipeline stalled. Inserting NOP into EX stage.\n");
     } else if (branch_flush_this_cycle) {
         pipeline[MEM] = pipeline[EX];
         insert_nop(EX, pipeline);
@@ -268,22 +268,22 @@ void simulate_one_cycle_no_forwarding_internal() {
 
         if (fetched.opcode == HALT) {
             // DEBUG Statement
-            printf("HALT instruction fetched. Stopping further fetches.\n");
+            DBG_PRINTF("HALT instruction fetched. Stopping further fetches.\n");
             pipeline_halt_seen = 1;
         }
 
         pipeline_pc += WORD_SIZE;
 
         // DEBUG Statement
-        printf("Fetched instruction at PC: %u. Opcode: %d\n", pipeline[IF].pc, fetched.opcode);
+        DBG_PRINTF("Fetched instruction at PC: %u. Opcode: %d\n", pipeline[IF].pc, fetched.opcode);
     } else if (!raw_hazard_stall_this_cycle && pipeline_halt_seen) {
         insert_nop(IF, pipeline);
         // DEBUG Statement
-        printf("Inserting NOP into IF stage because HALT was previously fetched and no stall/flush.\n");
+        DBG_PRINTF("Inserting NOP into IF stage because HALT was previously fetched and no stall/flush.\n");
     } else if (!raw_hazard_stall_this_cycle && !pipeline_halt_seen && pipeline_pc >= (MAX_MEMORY_LINES * WORD_SIZE)) {
         insert_nop(IF, pipeline);
         // DEBUG Statement
-        printf("Inserting NOP into IF stage because PC (%u) is out of memory bounds, effectively halting.\n", pipeline_pc);
+        DBG_PRINTF("Inserting NOP into IF stage because PC (%u) is out of memory bounds, effectively halting.\n", pipeline_pc);
         pipeline_halt_seen = 1;
     }
 }

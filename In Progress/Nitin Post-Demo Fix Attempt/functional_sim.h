@@ -34,4 +34,11 @@ void initialize_machine_state();
 void simulate_instruction(DecodedInstruction instr);
 void print_final_state();
 
+// Global flag, set to 1 when “–d” or “--debug” is passed on the command line:
+extern int debug_enabled;
+
+// Helper macro: calls printf only when debug_enabled is true.
+#define DBG_PRINTF(fmt, ...) \
+    do { if (debug_enabled) fprintf(stdout, fmt, ##__VA_ARGS__); } while (0)
+
 #endif // FUNCTIONAL_SIMULATOR_H

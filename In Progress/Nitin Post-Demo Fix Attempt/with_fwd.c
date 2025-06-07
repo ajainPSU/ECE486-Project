@@ -262,7 +262,7 @@ static void simulate_one_cycle_with_forwarding_internal() {
                 break;
             case BEQ:
                 // DEBUG (06/04/2025 at 11:43 PM):
-                fprintf(stderr, "DEBUG: BEQ at EX PC=0x%X, val_rs=%d, val_rt=%d, imm=%d\n",
+                DBG_PRINTF(stderr, "DEBUG: BEQ at EX PC=0x%X, val_rs=%d, val_rt=%d, imm=%d\n",
                         current_ex_pc, val_rs, val_rt, instr_ex.immediate);
                 if (val_rs == val_rt) {  // This comparison needs correct val_rs & val_rt
                     pipeline[EX].branch_taken = 1;
