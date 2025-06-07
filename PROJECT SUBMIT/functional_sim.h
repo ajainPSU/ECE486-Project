@@ -1,10 +1,20 @@
+/*
+* Functional Simulator Header File
+* This header file defines the structures and function prototypes for the functional simulator.
+* It includes the machine state, instruction types, and function declarations needed for simulation.
+*/
+
 #ifndef FUNCTIONAL_SIMULATOR_H
 #define FUNCTIONAL_SIMULATOR_H
 
 #include <stdint.h>
 #include "instruction_decoder.h"
 
-// Machine state structure
+/*
+* MachineState structure:
+* This structure represents the state of the machine during simulation.
+* It includes the program counter, general-purpose registers, and a simulated memory array.
+*/
 typedef struct {
     uint32_t pc;           // Program Counter
     int32_t registers[32]; // General-purpose registers (R1 to R31)

@@ -1,4 +1,9 @@
-// with_fwd.h (Modified)
+/*
+* Pipeline Simulation with Forwarding Header File
+* This header file defines the structures and function prototypes for simulating a pipelined processor
+* with forwarding capabilities. It includes necessary declarations for pipeline registers,
+* instruction decoding, and global counters.
+*/
 #ifndef WITH_FWD_H
 #define WITH_FWD_H
 

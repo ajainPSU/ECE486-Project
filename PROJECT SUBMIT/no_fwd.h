@@ -1,4 +1,8 @@
-// no_fwd.h (Modified)
+/*
+* No Forwarding Pipeline Simulation Header
+* This header file defines the structures and function prototypes for simulating a pipeline without forwarding.
+* It includes the necessary declarations for pipeline registers, instruction handling, and utility functions.
+*/
 #ifndef NO_FWD_H
 #define NO_FWD_H
 

@@ -1,4 +1,9 @@
-// global_counters.c
+/*
+* Global counters and NOP instruction definition for the functional simulator.
+* This file contains global variables to track the number of clock cycles,
+* stalls, and flushes in the simulation, as well as a NOP instruction definition.
+*/
+
 #include "instruction_decoder.h" // For DecodedInstruction, NOP, I_TYPE
 
 int clock_cycles = 0;

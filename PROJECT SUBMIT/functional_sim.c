@@ -1,10 +1,23 @@
 /*
-* Alex Jain - 05/30/2025
-* ECE 486 / Functional Simulator
-* * Takes elements from instruction_decoder.c and trace_reader.c
-* Runs a functional simulation of the instruction set architecture.
+* Functional Simulator
+* This program simulates a machine state that uses MIPs-Lite 
+* Instruction Set Architecture.
 *
-* Version 1.0 - Initial implementation.
+* The machine state tracks 32 Registers (R1-31), Memory Address Contents
+* and a Program Counter along with counts of instruction types.
+*
+* Upon encountering a HALT it terminates and prints the results.
+*
+* Suported Operations:
+* - Mode Selection: FS, NF, WF
+* - Instruction Types: Arithmetic, Logical, Memory Access, Control Transfer
+* - Debugging: Optional debug output for instruction execution
+* 
+* Functions:
+* - initialize_machine_state: Initializes the machine state
+* - simulate_instruction: Simulates a single instruction execution
+* - print_final_state: Prints the final state of the machine after simulation
+* - main: Main function to run the simulator based on command line arguments
 */
 
 #include <stdlib.h>
@@ -33,7 +46,12 @@ int logical_instructions = 0;
 int memory_access_instructions = 0;
 int control_transfer_instructions = 0;
 
-// Initialize the machine state
+/*
+* Initializes the machine state.
+* Sets the program counter (PC) to 0, initializes all registers to 0,
+* initializes memory to 0, and resets the tracking arrays for register writes
+* and memory changes.
+*/
 void initialize_machine_state() {
     state.pc = 0; // Initialize PC to 0
     memset(state.registers, 0, sizeof(state.registers)); // Initialize registers to 0
@@ -43,6 +61,12 @@ void initialize_machine_state() {
     // Note: clock_cycles, total_stalls, total_flushes are in no_fwd.c and initialized there
 }
 
+/*
+* Simulates the execution of a single instruction.
+* This function decodes the instruction and executes it based on its type.
+* It updates the machine state accordingly, including the program counter,
+* registers, and memory.
+*/
 void simulate_instruction(DecodedInstruction instr) {
     // Debug Statement
     DBG_PRINTF("SIMULATE_INSTRUCTION called with PC (arch before this instr)=%u, Opcode=0x%X, rs=%d, rt=%d, rd=%d, imm=%d\n",
@@ -180,9 +204,6 @@ void simulate_instruction(DecodedInstruction instr) {
             DBG_PRINTF("--- Architectural PC before this HALT was: %u ---\n", state.pc - 4); // New debug
             DBG_PRINTF("--- Architectural PC AFTER HALT increment is: %u ---\n", state.pc); // New debug
             DBG_PRINTF("Program halted.\n");
-            // print_final_state(); // Print final state upon halt
-            // fflush(stdout); // Testing to see if no_fwd.c receives this.
-            // exit(0); // Exit the program (removed for break for testing purposes)
             break;;
         case NOP:
             // Do nothing
@@ -197,7 +218,14 @@ void simulate_instruction(DecodedInstruction instr) {
 }
 
 
-// Print the final state of the machine after simulation.
+/*
+* Prints the final state of the machine after simulation.
+* This includes the total number of instructions executed, counts of each
+* instruction type, the final state of the registers, and the final memory state.
+* It also prints the total number of stalls and clock cycles if available.
+* This function is called when the HALT instruction is executed.
+* It can also be called at the end of the functional simulation loop.
+*/
 void print_final_state() {
     printf("Functional simulator output is as follows:\n\n");
 
@@ -236,7 +264,13 @@ void print_final_state() {
     printf("Total number of clock cycles: %d\n", clock_cycles);
 }
 
-// Main function to run the simulator
+/*
+* Main function to run the functional simulator.
+* It accepts command line arguments to specify the memory image file,
+* the mode of operation (FS, NF, WF), and an optional debug flag.
+* It initializes the machine state, reads the memory image, and runs the
+* appropriate simulation based on the mode specified.
+*/
 int main(int argc, char *argv[]) {
     // Accepts an optional 4th argument (“-d” or “--debug”)
     if (argc < 3 || argc > 4) {
@@ -261,14 +295,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // IMPORTANT: For NF mode, the state.registers must be initialized *before*
-    // the pipeline simulation starts, ideally by functionally executing the initial
-    // setup instructions. Since the problem requires the pipeline simulator to be
-    // standalone, and not call functional_sim's loop, we need to ensure functional_sim
-    // correctly reflects the state of the registers when it finishes its loop
-    // (for FS mode), or that the registers are correctly updated by instructions
-    // in the WB stage of the pipeline simulator.
-
     if (strcmp(mode, "FS") == 0) {
         // Run functional simulation loop
         // ADDED FS Trace Start
@@ -283,15 +309,12 @@ int main(int argc, char *argv[]) {
             uint32_t instr_word = state.memory[state.pc / 4];
             DecodedInstruction decoded = decode_instruction(instr_word);
 
-            /*
-            // <<< ADDED BLOCK START >>>
             // Print key architectural state *before* the instruction is simulated (optional, but can be useful)
-            printf("[FS_TRACE] PRE  PC=0x%03X: %s (Op:0x%X Rd:%d Rs:%d Rt:%d Imm:%d) || R1=%d R8=%d R10=%d R11=%d\n",
+            DBG_PRINT("[FS_TRACE] PRE  PC=0x%03X: %s (Op:0x%X Rd:%d Rs:%d Rt:%d Imm:%d) || R1=%d R8=%d R10=%d R11=%d\n",
                     pc_before_simulate,
                     opcode_to_string(decoded.opcode), // Ensure opcode_to_string is available
                     decoded.opcode, decoded.rd, decoded.rs, decoded.rt, decoded.immediate,
                     state.registers[1], state.registers[8], state.registers[10], state.registers[11]);
-            // <<< ADDED BLOCK END >>> */
 
             simulate_instruction(decoded);
 
@@ -321,22 +344,6 @@ int main(int argc, char *argv[]) {
                        state.pc); // state.pc is the PC for the *next* instruction
                 fflush(stdout);
             }
-
-            /* <<< ADDED BLOCK START >>>
-            // Print key architectural state *after* the instruction has been simulated
-            // Adjust which registers (R1-R12 or others) you print based on what's most relevant
-            printf("[FS_TRACE] PC_Exec=0x%03X; Op=%-4s(0x%02X); Rd=%2d,Rs=%2d,Rt=%2d,Imm=%-6d || R1=%-4d R2=%-4d R3=%-4d R4=%-4d R5=%-4d R6=%-4d R7=%-4d R8=%-4d R9=%-4d R10=%-3d R11=%-3d R12=%-3d || Next_Arch_PC=0x%03X\n",
-                   pc_before_simulate, // The PC of the instruction that JUST ran
-                   opcode_to_string(decoded.opcode), // Make sure opcode_to_string is available and declared
-                   decoded.opcode,
-                   decoded.rd, decoded.rs, decoded.rt, decoded.immediate,
-                   state.registers[1], state.registers[2], state.registers[3], state.registers[4],
-                   state.registers[5], state.registers[6], state.registers[7], state.registers[8],
-                   state.registers[9], state.registers[10], state.registers[11], state.registers[12],
-                   state.pc); // The new architectural PC for the *next* instruction
-            
-            fflush(stdout); // Ensure output is printed immediately
-            // <<< ADDED BLOCK END >>> */
 
             if (decoded.opcode == HALT) {
                 break; // simulate_instruction() for HALT will call exit(0) and print_final_state()
