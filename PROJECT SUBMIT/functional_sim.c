@@ -1,10 +1,12 @@
 /*
-* Alex Jain - 05/30/2025
-* ECE 486 / Functional Simulator
-* * Takes elements from instruction_decoder.c and trace_reader.c
-* Runs a functional simulation of the instruction set architecture.
+* Functional Simulator
+* This program simulates a machine state that uses MIPs-Lite 
+* Instruction Set Architecture.
 *
-* Version 1.0 - Initial implementation.
+* The machine state tracks 32 Registers (R1-31), Memory Address Contents
+* and a Program Counter along with counts of instruction types.
+*
+* Upon encountering a HALT it terminates and prints the results.
 */
 
 #include <stdlib.h>
